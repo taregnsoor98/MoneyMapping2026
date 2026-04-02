@@ -11,12 +11,17 @@ version = "0.0.1-SNAPSHOT"
 
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(21)
+		languageVersion = JavaLanguageVersion.of(23)
 	}
 }
 
 repositories {
 	mavenCentral()
+    maven {
+            name = "reposiliteRepositoryReleases"
+            url = uri("http://sirolf2009.com:8080/releases")
+            isAllowInsecureProtocol = true
+    }
 }
 
 dependencies {
@@ -25,7 +30,11 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
-	runtimeOnly("org.postgresql:postgresql")
+    implementation("com.sirolf2009:modulith:0.5")
+    implementation("com.sirolf2009.modulith:accounts:0.1")
+    runtimeOnly("org.postgresql:postgresql")
+
+
 	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

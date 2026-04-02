@@ -1,0 +1,19 @@
+<?xml version = "1.0" encoding = "utf-8"?>
+<!DOCTYPE hibernate-configuration SYSTEM
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+
+        <property name = "hibernate.connection.url">
+            jdbc:postgresql://localhost:5432/MoneyMapping
+        </property>
+
+        <property name = "hibernate.connection.username">
+            tareg
+        </property>
+
+        <property name = "hibernate.connection.password">
+            tareg98
+        </property>
+    </session-factory>
+</hibernate-configuration>
