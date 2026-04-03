@@ -1,13 +1,20 @@
-package com.example.moneymapping.network // this file belongs to the network package
+package com.example.moneymapping.network
 
-// this is what we SEND to the server when logging in or registering
-data class Credentials(
-    val username: String, // the username typed by the user
-    val password: String  // the password typed by the user
+// what we send to the server when registering
+data class RegisterRequest(
+    val email: String, // the email address
+    val username: String, // the chosen username
+    val password: String // the chosen password
 )
 
-// this is what the server SENDS BACK after successful login or register
+// what we send to the server when logging in
+data class LoginRequest(
+    val emailOrUsername: String, // accepts either email or username
+    val password: String // the password
+)
+
+// what the server sends back after successful login
 data class TokenResponse(
-    val accessToken: String,  // short-lived token (5 mins), used for API calls
-    val refreshToken: String  // long-lived token (14 days), used to get a new access token
+    val accessToken: String, // short-lived token (5 mins), used for API calls
+    val refreshToken: String // long-lived token (14 days), used to get a new access token
 )

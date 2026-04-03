@@ -1,14 +1,16 @@
-package com.example.moneymapping.network // this file belongs to the network package
+package com.example.moneymapping.network
 
 import retrofit2.http.Body
+import retrofit2.http.Header
 import retrofit2.http.POST
 
 interface AuthApi {
-    @POST("Account/login") // tells Retrofit this is a POST request to /Account/login
-    suspend fun login(@Body credentials: Credentials): TokenResponse
-    // suspend = runs in background, @Body = sends credentials as JSON, returns TokenResponse
+    @POST("account/register") // tells Retrofit this is a POST request to /account/register
+    suspend fun register(@Body request: RegisterRequest): String // sends register request, returns success message
 
-    @POST("Account/register") // tells Retrofit this is a POST request to /Account/register
-    suspend fun register(@Body credentials: Credentials): TokenResponse
-    // same as login but creates a new account first
+    @POST("account/login") // tells Retrofit this is a POST request to /account/login
+    suspend fun login(@Body request: LoginRequest): TokenResponse // sends login request, returns tokens
+
+    @POST("account/refresh") // tells Retrofit this is a POST request to /account/refresh
+    suspend fun refresh(@Header("Authorization") token: String): TokenResponse // refreshes the access token
 }

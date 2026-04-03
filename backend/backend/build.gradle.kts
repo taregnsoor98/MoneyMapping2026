@@ -32,6 +32,7 @@ dependencies {
 	implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("com.sirolf2009:modulith:0.5")
     implementation("com.sirolf2009.modulith:accounts:0.2")
+    implementation("org.springframework.boot:spring-boot-starter-mail")
     runtimeOnly("org.postgresql:postgresql")
 
 

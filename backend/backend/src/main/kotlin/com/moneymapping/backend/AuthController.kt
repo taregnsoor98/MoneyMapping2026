@@ -1,45 +1,96 @@
 package com.moneymapping.backend
 
-import com.sirolf2009.modulith.account.GenerateAccessToken // generates access token
-import com.sirolf2009.modulith.account.GenerateRefreshToken // generates refresh token
-import com.sirolf2009.modulith.account.HashPassword // hashes the password
-import com.sirolf2009.modulith.account.dto.Credentials // login/register request body
-import com.sirolf2009.modulith.account.dto.LoginResponse // the token response
-import com.sirolf2009.modulith.cqrs.execute // executes a command
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import com.sirolf2009.modulith.account.GenerateAccessToken // generates a short-lived access token
+import com.sirolf2009.modulith.account.GenerateRefreshToken // generates a long-lived refresh token
+import com.sirolf2009.modulith.account.HashPassword // hashes the password with a salt
+import com.sirolf2009.modulith.account.VerifyToken // verifies a JWT token is valid
+import com.sirolf2009.modulith.account.dto.LoginResponse // the response containing access and refresh tokens
+import com.sirolf2009.modulith.cqrs.execute // executes a command from the auth library
+import org.springframework.http.HttpStatus // HTTP status codes like 200, 400, 500
+import org.springframework.http.ResponseEntity // allows returning custom HTTP status codes with responses
+import org.springframework.web.bind.annotation.GetMapping // marks a function as a GET endpoint
+import org.springframework.web.bind.annotation.PostMapping // marks a function as a POST endpoint
+import org.springframework.web.bind.annotation.RequestBody // reads the request body as JSON
+import org.springframework.web.bind.annotation.RequestHeader // reads a specific request header
+import org.springframework.web.bind.annotation.RequestMapping // sets the base path for all endpoints in this class
+import org.springframework.web.bind.annotation.RequestParam // reads a query parameter from the URL
+import org.springframework.web.bind.annotation.RestController // marks this class as a REST controller
 import java.util.UUID // for generating unique IDs
 
 @RestController
-@RequestMapping("/Account")
+@RequestMapping("/account") // all endpoints in this class start with /account
 class AuthController(
-    private val userRepository: UserRepository // injected automatically by Spring
+    private val userRepository: UserRepository, // injected automatically by Spring — handles database operations
+    private val emailService: EmailService // injected automatically by Spring — handles sending emails
 ) {
 
-    @PostMapping("/register") // handles POST /Account/register
-    fun register(@RequestBody credentials: Credentials): LoginResponse {
-        val salt = UUID.randomUUID().toString() // generate a random salt
-        val id = UUID.randomUUID().toString() // generate a unique user ID
-        val hashedPassword = execute(HashPassword(credentials.password, salt)) // hash the password
-        val user = User(id, credentials.username, hashedPassword, salt) // create the user object
+    @PostMapping("/register") // handles POST /account/register
+    fun register(@RequestBody request: RegisterRequest): ResponseEntity<String> {
+        if (userRepository.findByEmail(request.email).isPresent) { // check if email already exists in database
+            return ResponseEntity.badRequest().body("This email is already registered") // block duplicate emails
+        }
+        if (userRepository.findByUsername(request.username).isPresent) { // check if username already exists in database
+            return ResponseEntity.badRequest().body("This username is already taken") // block duplicate usernames
+        }
+        val salt = UUID.randomUUID().toString() // generate a random salt for password hashing
+        val id = UUID.randomUUID().toString() // generate a unique ID for this user
+        val hashedPassword = execute(HashPassword(request.password, salt)) // hash the password with the salt
+        val confirmationToken = UUID.randomUUID().toString() // generate a unique token for email confirmation
+        val user = User(id, request.username, hashedPassword, salt, request.email, confirmationToken, false) // create user, not confirmed yet
         userRepository.save(user) // save user to database
-        val accessToken = execute(GenerateAccessToken(id)) // generate access token
-        val refreshToken = execute(GenerateRefreshToken(id)) // generate refresh token
-        return LoginResponse(accessToken, refreshToken) // return tokens
+        emailService.sendConfirmationEmail(request.email, confirmationToken) // send confirmation email in background
+        return ResponseEntity.ok("Please check your email to confirm your account") // respond immediately without waiting for email
     }
-    // note : we need to work on refreshing tokens too
-    // paths are inconsistent (as in the first letter is either all Caps, or none, Account, login (standard is no cap)
 
-    @PostMapping("/login") // handles POST /Account/login
-    fun login(@RequestBody credentials: Credentials): LoginResponse {
-        val user = userRepository.findByUsername(credentials.username)
-            .orElseThrow { RuntimeException("User not found") } // find user or throw error
-        val hashedPassword = execute(HashPassword(credentials.password, user.salt)) // hash the input password
-        if (hashedPassword != user.password) throw RuntimeException("Invalid password") // compare passwords
-        val accessToken = execute(GenerateAccessToken(user.id)) // generate access token
-        val refreshToken = execute(GenerateRefreshToken(user.id)) // generate refresh token
-        return LoginResponse(accessToken, refreshToken) // return tokens
+    @GetMapping("/confirm") // handles GET /account/confirm?token=xxx
+    fun confirm(@RequestParam token: String): ResponseEntity<String> {
+        val user = userRepository.findByConfirmationToken(token)
+            .orElseThrow { RuntimeException("Invalid or expired confirmation link") } // find user by token or fail
+        val confirmedUser = user.copy(confirmed = true, confirmationToken = null) // mark user as confirmed and clear token
+        userRepository.save(confirmedUser) // save updated user to database
+        return ResponseEntity.ok("Email confirmed! You can now login.") // success message
+    }
+
+    @PostMapping("/login") // handles POST /account/login
+    fun login(@RequestBody request: LoginRequest): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(request.emailOrUsername) // try finding user by email first
+            .orElseGet { userRepository.findByUsername(request.emailOrUsername).orElse(null) } // fall back to username
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("No account found with this email or username") // no user found
+
+        if (!user.confirmed) { // check if user has confirmed their email
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Please confirm your email before logging in") // block unconfirmed users
+        }
+
+        val hashedPassword = execute(HashPassword(request.password, user.salt)) // hash the entered password with stored salt
+        if (hashedPassword != user.password) { // compare hashed passwords
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect password") // wrong password
+        }
+
+        val accessToken = execute(GenerateAccessToken(user.id)) // generate a new access token
+        val refreshToken = execute(GenerateRefreshToken(user.id)) // generate a new refresh token
+        return ResponseEntity.ok(LoginResponse(accessToken, refreshToken)) // return tokens to the client
+    }
+
+    @PostMapping("/refresh") // handles POST /account/refresh
+    fun refresh(@RequestHeader("Authorization") authHeader: String): ResponseEntity<Any> {
+        val token = authHeader.removePrefix("Bearer ") // extract the token from the Authorization header
+        val tokenData = execute(VerifyToken(token)) // verify the token is valid
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token") // token is invalid
+        val newAccessToken = execute(GenerateAccessToken(tokenData.userId)) // generate a new access token
+        val newRefreshToken = execute(GenerateRefreshToken(tokenData.userId)) // generate a new refresh token
+        return ResponseEntity.ok(LoginResponse(newAccessToken, newRefreshToken)) // return new tokens
     }
 }
+
+// the body sent when registering - contains email, username, and password
+data class RegisterRequest(
+    val email: String, // the email address used to confirm and login
+    val username: String, // the chosen username
+    val password: String // the chosen password
+)
+
+// the body sent when logging in - accepts either email or username plus password
+data class LoginRequest(
+    val emailOrUsername: String, // the user can type either their email or username here
+    val password: String // the password
+)

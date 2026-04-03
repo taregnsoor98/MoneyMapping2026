@@ -6,17 +6,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.moneymapping.ui.auth.AuthState
-import com.example.moneymapping.ui.auth.AuthViewModel
-import com.example.moneymapping.ui.auth.LoginScreen
-import com.example.moneymapping.ui.auth.RegisterScreen
-import com.example.moneymapping.ui.theme.MoneyMappingTheme
+import androidx.compose.runtime.collectAsState // watches the authState for any changes and recomposes the UI
+import androidx.compose.runtime.getValue // allows using "by" keyword to access state values cleanly
+import androidx.compose.runtime.mutableStateOf // creates a simple state value that triggers UI updates when changed
+import androidx.compose.runtime.remember // remembers the value across recompositions so it doesn't reset
+import androidx.compose.runtime.setValue // allows changing the value of a remembered state
+import androidx.lifecycle.viewmodel.compose.viewModel // creates and provides the ViewModel to the composable
+import com.example.moneymapping.ui.auth.AuthState // the possible states of the auth process
+import com.example.moneymapping.ui.auth.AuthViewModel // handles all auth logic
+import com.example.moneymapping.ui.auth.LoginScreen // the login UI screen
+import com.example.moneymapping.ui.auth.RegisterScreen // the register UI screen
+import com.example.moneymapping.ui.theme.MoneyMappingTheme // the app theme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MoneyMappingTheme {
-                AppNavigation()
+                AppNavigation() // starts the app navigation
             }
         }
     }
@@ -32,30 +32,31 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation() {
-    val authViewModel: AuthViewModel = viewModel()
-    val authState by authViewModel.authState.collectAsState()
-    var showRegister by remember { mutableStateOf(false) }
+    val authViewModel: AuthViewModel = viewModel() // creates the AuthViewModel
+    val authState by authViewModel.authState.collectAsState() // watches for auth state changes
+    var showRegister by remember { mutableStateOf(false) } // tracks whether to show register or login screen
 
     when {
-        authState is AuthState.Success -> {
-            Text("Logged in successfully!") // temporary success message
+        authState is AuthState.LoginSuccess -> {
+            // user is logged in successfully, we will add the main screen here later
+            Text("Welcome! You are logged in.")
         }
         showRegister -> {
             RegisterScreen(
-                onRegisterClick = { username, password ->
-                    authViewModel.register(username, password)
+                onRegisterClick = { email, username, password ->
+                    authViewModel.register(email, username, password) // calls register in ViewModel
                 },
-                onLoginClick = { showRegister = false },
-                authState = authState // pass state so screen can show errors
+                onLoginClick = { showRegister = false }, // switches back to login screen
+                authState = authState // passes current state so screen can show feedback
             )
         }
         else -> {
             LoginScreen(
-                onLoginClick = { username, password ->
-                    authViewModel.login(username, password)
+                onLoginClick = { emailOrUsername, password ->
+                    authViewModel.login(emailOrUsername, password) // calls login in ViewModel
                 },
-                onRegisterClick = { showRegister = true },
-                authState = authState // pass state so screen can show errors
+                onRegisterClick = { showRegister = true }, // switches to register screen
+                authState = authState // passes current state so screen can show feedback
             )
         }
     }
