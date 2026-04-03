@@ -31,7 +31,7 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("com.sirolf2009:modulith:0.5")
-    implementation("com.sirolf2009.modulith:accounts:0.1")
+    implementation("com.sirolf2009.modulith:accounts:0.2")
     runtimeOnly("org.postgresql:postgresql")
 
 
