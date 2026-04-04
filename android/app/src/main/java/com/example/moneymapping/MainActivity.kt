@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState // watches the authState for any changes and recomposes the UI
 import androidx.compose.runtime.getValue // allows using "by" keyword to access state values cleanly
@@ -16,6 +15,7 @@ import com.example.moneymapping.ui.auth.AuthState // the possible states of the 
 import com.example.moneymapping.ui.auth.AuthViewModel // handles all auth logic
 import com.example.moneymapping.ui.auth.LoginScreen // the login UI screen
 import com.example.moneymapping.ui.auth.RegisterScreen // the register UI screen
+import com.example.moneymapping.ui.navigation.MainScreen // imports the main screen with bottom nav
 import com.example.moneymapping.ui.theme.MoneyMappingTheme // the app theme
 
 class MainActivity : ComponentActivity() {
@@ -38,8 +38,7 @@ fun AppNavigation() {
 
     when {
         authState is AuthState.LoginSuccess -> {
-            // user is logged in successfully, we will add the main screen here later
-            Text("Welcome! You are logged in.")
+            MainScreen() // loads the main screen with bottom nav after successful login
         }
         showRegister -> {
             RegisterScreen(
