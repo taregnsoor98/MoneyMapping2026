@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Root manifest tag — defines the app's package and XML namespaces -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Allows the app to make network calls to the backend API -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Allows the app to open the camera for scanning receipts -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Declares that the app uses the camera but does not require it as mandatory hardware -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Application block — contains all app level settings -->
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -12,13 +23,19 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.MoneyMapping">
+
+        <!-- Main activity — the first screen that opens when the app launches -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.MoneyMapping">
+
+            <!-- Intent filter — marks this as the launcher activity -->
             <intent-filter>
+                <!-- Marks this as the main entry point of the app -->
                 <action android:name="android.intent.action.MAIN" />
+                <!-- Shows this activity in the device app launcher -->
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>

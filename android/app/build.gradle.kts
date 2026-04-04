@@ -57,6 +57,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("com.squareup.retrofit2:converter-scalars:2.9.0") // converts plain text server responses to String
     implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.compose.material3:material3:1.2.1") // for date picker dialog
+    implementation("androidx.activity:activity-compose:1.9.0") // for image picker from gallery
+    implementation("androidx.activity:activity-compose:1.9.0")         // for image picker from gallery
+    implementation("io.coil-kt:coil-compose:2.6.0")                    // for displaying picked images
+    implementation("com.google.mlkit:text-recognition:16.0.0") // ML Kit for receipt scanning
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

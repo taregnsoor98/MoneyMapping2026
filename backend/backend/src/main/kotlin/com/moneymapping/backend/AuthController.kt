@@ -80,6 +80,18 @@ class AuthController(
         val newRefreshToken = execute(GenerateRefreshToken(tokenData.userId)) // generate a new refresh token
         return ResponseEntity.ok(LoginResponse(newAccessToken, newRefreshToken)) // return new tokens
     }
+
+    @GetMapping("/search") // handles GET /account/search?query=xxx
+    fun searchUsers(@RequestParam query: String): ResponseEntity<List<UserSearchResult>> {
+        if (query.length < 2) { // require at least 2 characters to search
+            return ResponseEntity.badRequest().build() // reject too-short queries
+        }
+        val results = userRepository.searchByUsernameOrEmail(query) // searches database for matching users
+            .map { UserSearchResult(it.id, it.username, it.email) } // maps to a safe response without password
+        return ResponseEntity.ok(results) // returns the list of matching users
+        // there should be a limit to how many people can show in the search (also make it that its more than 2 characters for the search
+        // check the notebook for other comments, also maybe dont show users until its almost a full match, like dont give the chance to see many users until you write most letters
+    }
 }
 
 // the body sent when registering - contains email, username, and password
@@ -93,4 +105,11 @@ data class RegisterRequest(
 data class LoginRequest(
     val emailOrUsername: String, // the user can type either their email or username here
     val password: String // the password
+)
+
+// the response returned when searching for users — never includes password or sensitive data
+data class UserSearchResult(
+    val id: String,       // the user's unique id
+    val username: String, // the user's username
+    val email: String     // the user's email
 )

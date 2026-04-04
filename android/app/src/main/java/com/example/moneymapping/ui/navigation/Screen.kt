@@ -8,4 +8,5 @@ sealed class Screen(val route: String) {
     object History : Screen("history")   // Expense history screen
     object Groups : Screen("groups")     // Groups management screen
     object Profile : Screen("profile")   // User profile & settings screen
+    object AddExpense : Screen("add_expense") // route for the add expense screen
 }
