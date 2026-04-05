@@ -3,13 +3,12 @@ package com.example.moneymapping.ui.expense
 // Step 5 of the Add Expense wizard
 // Shows each item in the expense and lets the user assign people to each one independently.
 // Each item has its own search field to find existing users or add guests.
-// If an item has quantity > 1, each person can specify how many units they are taking.
-// The share is calculated proportionally based on quantity, or equally if no quantities are set.
+// If an item has quantity > 1, each person can use + and - buttons to pick how many units they take.
+// The share is calculated proportionally based on quantity, or equally if quantity is 1.
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,7 +72,7 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
         )
 
         Text(
-            text = "For each item, search for a user or add a guest. If quantity > 1, you can set how many units each person takes.",
+            text = "For each item, search for a user or add a guest. If quantity > 1, use + and - to set how many units each person takes.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant // lighter description color
         )
@@ -133,17 +132,10 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                                 (searchState as SearchState.Results).users.forEach { user ->
                                     DropdownMenuItem(
                                         text = {
-                                            Column {
-                                                Text(
-                                                    text = user.username,
-                                                    style = MaterialTheme.typography.bodyMedium // shows username
-                                                )
-                                                Text(
-                                                    text = user.email,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant // shows email in lighter color
-                                                )
-                                            }
+                                            Text(
+                                                text = user.username,
+                                                style = MaterialTheme.typography.bodyMedium // shows username only, no email for privacy
+                                            )
                                         },
                                         onClick = {
                                             // Adds user to this item's assignedTo list if not already there
@@ -193,7 +185,7 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                         }
                     }
 
-                    // Shows assigned people with quantity input if item quantity > 1
+                    // Shows assigned people with quantity picker if item quantity > 1
                     if (item.assignedTo.isNotEmpty()) {
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -207,7 +199,7 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Shows each assigned person with optional quantity input
+                        // Shows each assigned person with + and - quantity picker
                         item.assignedTo.forEach { personName ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -233,33 +225,55 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                                     label = { Text("$personName ✕") } // shows name with remove icon
                                 )
 
-                                // Shows quantity input only if item has more than 1 unit
+                                // Shows quantity picker only if item has more than 1 unit
                                 if (item.quantity > 1) {
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    OutlinedTextField(
-                                        value = (item.assignedQuantities[personName] ?: 1).toString(), // defaults to 1
-                                        onValueChange = { input ->
-                                            val qty = input.toIntOrNull() ?: 1 // converts to int safely
-                                            val capped = qty.coerceIn(1, item.quantity) // caps between 1 and item quantity
-                                            val updatedQuantities = item.assignedQuantities + (personName to capped) // updates quantity for this person
-                                            viewModel.updateItem(
-                                                index,
-                                                item.copy(assignedQuantities = updatedQuantities)
-                                            )
-                                        },
-                                        label = { Text("Qty") },
-                                        modifier = Modifier.width(80.dp) // small fixed width for quantity field
-                                    )
 
-                                    // Shows how much this person owes based on their quantity
-                                    val personQty = item.assignedQuantities[personName] ?: 1
-                                    val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size
-                                    val personShare = (personQty.toDouble() / totalAssignedQty) * item.totalPrice
-                                    Text(
-                                        text = String.format("%.2f", personShare), // shows their calculated share
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary // highlights share in primary color
-                                    )
+                                    val personQty = item.assignedQuantities[personName] ?: 1 // current quantity for this person
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        // Minus button — decreases quantity down to 1
+                                        Button(
+                                            onClick = {
+                                                val newQty = (personQty - 1).coerceAtLeast(1) // never goes below 1
+                                                val updatedQuantities = item.assignedQuantities + (personName to newQty) // updates quantity
+                                                viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
+                                            },
+                                            modifier = Modifier.width(36.dp) // small button width
+                                        ) {
+                                            Text("-") // minus label
+                                        }
+
+                                        // Shows current quantity
+                                        Text(
+                                            text = personQty.toString(),
+                                            style = MaterialTheme.typography.bodyMedium // medium text for quantity
+                                        )
+
+                                        // Plus button — increases quantity up to item max
+                                        Button(
+                                            onClick = {
+                                                val newQty = (personQty + 1).coerceAtMost(item.quantity) // never goes above item quantity
+                                                val updatedQuantities = item.assignedQuantities + (personName to newQty) // updates quantity
+                                                viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
+                                            },
+                                            modifier = Modifier.width(36.dp) // small button width
+                                        ) {
+                                            Text("+") // plus label
+                                        }
+
+                                        // Shows how much this person owes based on their quantity
+                                        val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size // total assigned quantity
+                                        val personShare = (personQty.toDouble() / totalAssignedQty) * item.totalPrice // proportional share
+                                        Text(
+                                            text = String.format("%.2f", personShare), // shows their calculated share
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary // highlights share in primary color
+                                        )
+                                    }
                                 }
                             }
                         }

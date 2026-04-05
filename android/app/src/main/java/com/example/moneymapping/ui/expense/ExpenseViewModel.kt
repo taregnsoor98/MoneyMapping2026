@@ -1,7 +1,9 @@
 package com.example.moneymapping.ui.expense
 
-import androidx.lifecycle.ViewModel
+import android.app.Application // needed to get the app context for TokenManager
+import androidx.lifecycle.AndroidViewModel // base class that provides app context unlike regular ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.moneymapping.data.TokenManager // handles saving and reading tokens from DataStore
 import com.example.moneymapping.network.GroupResult
 import com.example.moneymapping.network.RetrofitClient
 import com.example.moneymapping.network.UserSearchResult
@@ -9,7 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow // holds a value and emits updat
 import kotlinx.coroutines.flow.StateFlow // read-only version exposed to the UI
 import kotlinx.coroutines.launch // launches a coroutine for background work
 
-class ExpenseViewModel : ViewModel() {
+class ExpenseViewModel(application: Application) : AndroidViewModel(application) { // uses AndroidViewModel to access app context for TokenManager
+
+    private val tokenManager = TokenManager(application) // creates TokenManager using app context to access DataStore
 
     // make the category the mutablestateflow, so basically delete the line val cat... and just change _category into the normal word category and make it public
     // make it for all.
@@ -130,19 +134,20 @@ class ExpenseViewModel : ViewModel() {
         _receiptImages.value = _receiptImages.value + uris // appends new images to existing list
     }
 
-    // Fetches the user's groups from the backend
-    fun fetchGroups(token: String) {
+    // Fetches the user's groups from the backend using the stored token
+    fun fetchGroups() {
         viewModelScope.launch {
             _groupsState.value = GroupsState.Loading // shows loading while fetching
             try {
-                val groups = RetrofitClient.authApi.getGroups("Bearer $token") // calls the groups endpoint
+                val accessToken = tokenManager.getAccessToken() // gets the stored access token
+                    ?: return@launch // stops if no token is found
+                val groups = RetrofitClient.authApi.getGroups("Bearer $accessToken") // calls the groups endpoint with token
                 _groupsState.value = GroupsState.Success(groups) // updates state with fetched groups
             } catch (e: Exception) {
                 _groupsState.value = GroupsState.Error("Could not load groups: ${e.message}") // shows error if fetch fails
             }
         }
     }
-
     // Searches for existing users by username or email
     fun searchUsers(query: String) {
         if (query.length < 2) { // require at least 2 characters before searching
@@ -190,11 +195,37 @@ class ExpenseViewModel : ViewModel() {
         return shares
     }
 
-    // Submits the expense — will connect to backend API later
+    // Submits the expense — checks token validity first, refreshes if expired, then submits
     fun submitExpense() {
-        _expenseState.value = ExpenseState.Loading // shows loading while submitting
-        // TODO: connect to backend API here
-        _expenseState.value = ExpenseState.Success // simulates success for now
+        viewModelScope.launch {
+            _expenseState.value = ExpenseState.Loading // shows loading while submitting
+            try {
+                var accessToken = tokenManager.getAccessToken() // gets the stored access token
+                val refreshToken = tokenManager.getRefreshToken() // gets the stored refresh token
+
+                // If no access token exists, the user needs to log in again
+                if (accessToken == null) {
+                    _expenseState.value = ExpenseState.Error("Session expired. Please log in again.")
+                    return@launch
+                }
+
+                // Tries to refresh the token in case it has expired
+                try {
+                    val refreshResponse = RetrofitClient.authApi.refresh("Bearer $refreshToken") // calls refresh endpoint
+                    accessToken = refreshResponse.accessToken // uses the new access token
+                    tokenManager.saveTokens(refreshResponse.accessToken, refreshResponse.refreshToken) // saves the new tokens
+                } catch (e: Exception) {
+                    // If refresh fails, the user needs to log in again
+                    _expenseState.value = ExpenseState.Error("Session expired. Please log in again.")
+                    return@launch
+                }
+
+                // TODO: connect to backend API here using accessToken to submit the expense
+                _expenseState.value = ExpenseState.Success // simulates success for now
+            } catch (e: Exception) {
+                _expenseState.value = ExpenseState.Error("Failed to submit: ${e.message}") // shows error if submission fails
+            }
+        }
     }
 
     // Resets everything back to initial state
@@ -270,4 +301,3 @@ sealed class GroupsState {
     data class Success(val groups: List<GroupResult>) : GroupsState()  // groups loaded successfully
     data class Error(val message: String) : GroupsState()              // fetch failed
 }
-

@@ -52,7 +52,7 @@ fun StepThree(viewModel: ExpenseViewModel) { // receives the shared ViewModel
     // Fetches groups when the user selects existing group option
     LaunchedEffect(expenseType) {
         if (expenseType is ExpenseType.ExistingGroup) {
-            viewModel.fetchGroups("") // TODO: pass real token here once auth token storage is set up
+            viewModel.fetchGroups() // fetches groups using the stored token from DataStore
         }
     }
 
