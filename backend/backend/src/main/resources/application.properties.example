@@ -16,3 +16,4 @@ spring.mail.properties.mail.smtp.auth=true
 spring.mail.properties.mail.smtp.starttls.enable=true
 
 anthropic.api.key=your_anthropic_api_key_here
+this is an example of how it is supposed to look like.
