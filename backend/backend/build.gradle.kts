@@ -33,7 +33,9 @@ dependencies {
     implementation("com.sirolf2009:modulith:0.5")
     implementation("com.sirolf2009.modulith:accounts:0.2")
     implementation("org.springframework.boot:spring-boot-starter-mail")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2") // Jackson for parsing JSON responses
     runtimeOnly("org.postgresql:postgresql")
+
 
 
 	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")

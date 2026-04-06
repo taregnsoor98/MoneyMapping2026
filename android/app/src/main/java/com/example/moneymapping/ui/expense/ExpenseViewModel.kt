@@ -4,6 +4,7 @@ import android.app.Application // needed to get the app context for TokenManager
 import androidx.lifecycle.AndroidViewModel // base class that provides app context unlike regular ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.moneymapping.data.TokenManager // handles saving and reading tokens from DataStore
+import com.example.moneymapping.network.CreateExpenseRequest
 import com.example.moneymapping.network.GroupResult
 import com.example.moneymapping.network.RetrofitClient
 import com.example.moneymapping.network.UserSearchResult
@@ -195,12 +196,12 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         return shares
     }
 
-    // Submits the expense — checks token validity first, refreshes if expired, then submits
+    // Submits the expense — refreshes token first, then sends expense data to the backend
     fun submitExpense() {
         viewModelScope.launch {
             _expenseState.value = ExpenseState.Loading // shows loading while submitting
             try {
-                var accessToken = tokenManager.getAccessToken() // gets the stored access token
+                var accessToken = tokenManager.getAccessToken()   // gets the stored access token
                 val refreshToken = tokenManager.getRefreshToken() // gets the stored refresh token
 
                 // If no access token exists, the user needs to log in again
@@ -212,18 +213,29 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 // Tries to refresh the token in case it has expired
                 try {
                     val refreshResponse = RetrofitClient.authApi.refresh("Bearer $refreshToken") // calls refresh endpoint
-                    accessToken = refreshResponse.accessToken // uses the new access token
+                    accessToken = refreshResponse.accessToken                                     // uses the new access token
                     tokenManager.saveTokens(refreshResponse.accessToken, refreshResponse.refreshToken) // saves the new tokens
                 } catch (e: Exception) {
-                    // If refresh fails, the user needs to log in again
                     _expenseState.value = ExpenseState.Error("Session expired. Please log in again.")
                     return@launch
                 }
 
-                // TODO: connect to backend API here using accessToken to submit the expense
-                _expenseState.value = ExpenseState.Success // simulates success for now
+                // Builds the request object from the current ViewModel state
+                val request = CreateExpenseRequest(
+                    groupId = (_expenseType.value as? ExpenseType.ExistingGroup)?.groupId, // gets group ID if applicable, null otherwise
+                    amount = _items.value.sumOf { it.totalPrice },                          // calculates total from all items
+                    currency = _currency.value,                                             // the selected currency
+                    description = _description.value,                                       // the expense description
+                    category = _category.value,                                             // the selected category
+                    date = _date.value,                                                     // the selected date
+                    isOneTimeSplit = _expenseType.value is ExpenseType.OneTimeSplit,        // true if one-time split
+                    receiptImages = _receiptImages.value                                    // the list of receipt image URIs
+                )
+
+                RetrofitClient.authApi.createExpense("Bearer $accessToken", request) // sends the expense to the backend
+                _expenseState.value = ExpenseState.Success                           // marks submission as successful
             } catch (e: Exception) {
-                _expenseState.value = ExpenseState.Error("Failed to submit: ${e.message}") // shows error if submission fails
+                _expenseState.value = ExpenseState.Error("Failed to submit: ${e.message}") // shows error if something goes wrong
             }
         }
     }

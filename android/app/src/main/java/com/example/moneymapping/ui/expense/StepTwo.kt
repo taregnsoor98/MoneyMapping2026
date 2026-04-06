@@ -2,8 +2,7 @@ package com.example.moneymapping.ui.expense
 
 // Step 2 of the Add Expense wizard
 // Collects the basic expense information — description, date, currency, and category.
-// If the user chose to scan in Step 1, the camera opens first and ML Kit fills in the fields.
-// The user can edit all fields before moving to Step 3.
+// The user fills in all fields before moving to Step 3.
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,7 +64,7 @@ fun StepTwo(viewModel: ExpenseViewModel) { // receives the shared ViewModel
     // Shows the date picker dialog when triggered
     if (showDatePicker) {
         DatePickerDialog(
-            onDismissRequest = { showDatePicker = false }, // closes dialog on dismiss
+            onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
@@ -86,11 +85,10 @@ fun StepTwo(viewModel: ExpenseViewModel) { // receives the shared ViewModel
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = 16.dp), // padding at the bottom
+            .padding(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp) // spacing between fields
     ) {
 
-        // Step title
         Text(
             text = "Expense Details",
             style = MaterialTheme.typography.titleLarge // large title style
@@ -180,7 +178,7 @@ fun StepTwo(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
         // Next button to move to Step 3
         Button(
-            onClick = { viewModel.nextStep() }, // moves to next step
+            onClick = { viewModel.nextStep() },
             modifier = Modifier.fillMaxWidth(),
             enabled = description.isNotEmpty() && date.isNotEmpty() && category.isNotEmpty() // only enabled if required fields are filled
         ) {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Defines which folders the FileProvider is allowed to share files from -->
+<paths>
+    <!-- Allows sharing files from the app's cache directory — used for temporary camera photos -->
+    <cache-path name="cache" path="." />
+</paths>

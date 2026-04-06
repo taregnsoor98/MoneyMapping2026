@@ -1,9 +1,12 @@
 package com.example.moneymapping.network
 
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.PUT
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface AuthApi {
@@ -21,6 +24,21 @@ interface AuthApi {
 
     @GET("groups") // tells Retrofit this is a GET request to /groups
     suspend fun getGroups(@Header("Authorization") token: String): List<GroupResult> // fetches the user's groups
+
+    @POST("expenses") // tells Retrofit this is a POST request to /expenses
+    suspend fun createExpense(@Header("Authorization") token: String, @Body request: CreateExpenseRequest): ExpenseResponse // saves a new expense to the backend
+
+    @GET("expenses") // tells Retrofit this is a GET request to /expenses
+    suspend fun getExpenses(@Header("Authorization") token: String): List<ExpenseResponse> // fetches all expenses for the logged-in user
+
+    @PUT("expenses/{id}") // tells Retrofit this is a PUT request to /expenses/{id}
+    suspend fun updateExpense(@Header("Authorization") token: String, @Path("id") id: String, @Body request: CreateExpenseRequest): ExpenseResponse // updates an existing expense
+
+    @DELETE("expenses/{id}") // tells Retrofit this is a DELETE request to /expenses/{id}
+    suspend fun deleteExpense(@Header("Authorization") token: String, @Path("id") id: String): String // deletes an expense by its ID
+
+    @POST("receipt/scan") // tells Retrofit this is a POST request to /receipt/scan
+    suspend fun scanReceipt(@Header("Authorization") token: String, @Body request: ScanReceiptRequest): String // sends base64 image to backend and gets back a JSON list of items
 }
 
 // the result returned for each matching user from the search endpoint
@@ -35,4 +53,36 @@ data class GroupResult(
     val id: Int,          // the group's unique id
     val name: String,     // the group's display name
     val type: String      // the group type — "family", "friends", or "one_time"
+)
+
+// the request body sent when creating or updating an expense
+data class CreateExpenseRequest(
+    val groupId: Int? = null,                     // optional group ID — null for solo expenses
+    val amount: Double,                           // total amount of the expense
+    val currency: String,                         // e.g. "USD"
+    val description: String,                      // what the expense was for
+    val category: String,                         // e.g. "Food"
+    val date: String,                             // date in "yyyy-MM-dd" format
+    val isOneTimeSplit: Boolean = false,           // true if this is a one-time split
+    val receiptImages: List<String> = emptyList() // optional list of receipt image URIs
+)
+
+// the response returned by the backend after creating, updating or fetching an expense
+data class ExpenseResponse(
+    val id: String,                               // the expense's unique ID
+    val paidBy: String,                           // the user ID of whoever paid
+    val groupId: Int?,                            // optional group ID
+    val amount: Double,                           // total amount
+    val currency: String,                         // e.g. "USD"
+    val description: String,                      // what the expense was for
+    val category: String,                         // e.g. "Food"
+    val date: String,                             // date as "yyyy-MM-dd" string
+    val isOneTimeSplit: Boolean,                  // true if one-time split
+    val receiptImages: List<String>               // list of receipt image URIs
+)
+
+// the request body sent when scanning a receipt — contains the base64 encoded image
+data class ScanReceiptRequest(
+    val base64Image: String, // the receipt image encoded as base64
+    val mediaType: String    // the image type e.g. "image/jpeg" or "image/png"
 )

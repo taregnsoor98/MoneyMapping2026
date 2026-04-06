@@ -61,7 +61,6 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0") // for image picker from gallery
     implementation("androidx.activity:activity-compose:1.9.0")         // for image picker from gallery
     implementation("io.coil-kt:coil-compose:2.6.0")                    // for displaying picked images
-    implementation("com.google.mlkit:text-recognition:16.0.0") // ML Kit for receipt scanning
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
     testImplementation(libs.junit)
