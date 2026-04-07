@@ -28,6 +28,9 @@ interface AuthApi {
     @POST("expenses") // tells Retrofit this is a POST request to /expenses
     suspend fun createExpense(@Header("Authorization") token: String, @Body request: CreateExpenseRequest): ExpenseResponse // saves a new expense to the backend
 
+    @GET("expenses/{id}") // tells Retrofit this is a GET request to /expenses/{id}
+    suspend fun getExpense(@Header("Authorization") token: String, @Path("id") id: String): ExpenseResponse // fetches a single expense by its ID
+
     @GET("expenses") // tells Retrofit this is a GET request to /expenses
     suspend fun getExpenses(@Header("Authorization") token: String): List<ExpenseResponse> // fetches all expenses for the logged-in user
 
@@ -55,30 +58,66 @@ data class GroupResult(
     val type: String      // the group type — "family", "friends", or "one_time"
 )
 
+// the request body for a single assignment sent when creating or updating an expense
+data class ItemAssignmentRequest(
+    val personName: String,  // the person's name — either a username or guest name
+    val quantity: Double,    // how many units of the item this person is taking
+    val shareAmount: Double  // how much this person owes for this item
+)
+
+// the request body for a single item sent when creating or updating an expense
+data class ExpenseItemRequest(
+    val name: String,                                          // item name
+    val unitPrice: Double,                                     // price per unit
+    val quantity: Double,                                      // quantity — Double to support weight-based items
+    val totalPrice: Double,                                    // total price for this item
+    val assignments: List<ItemAssignmentRequest> = emptyList() // list of people assigned to this item
+)
+
 // the request body sent when creating or updating an expense
 data class CreateExpenseRequest(
-    val groupId: Int? = null,                     // optional group ID — null for solo expenses
-    val amount: Double,                           // total amount of the expense
-    val currency: String,                         // e.g. "USD"
-    val description: String,                      // what the expense was for
-    val category: String,                         // e.g. "Food"
-    val date: String,                             // date in "yyyy-MM-dd" format
-    val isOneTimeSplit: Boolean = false,           // true if this is a one-time split
-    val receiptImages: List<String> = emptyList() // optional list of receipt image URIs
+    val groupId: Int? = null,                          // optional group ID — null for solo expenses
+    val amount: Double,                                // total amount of the expense
+    val currency: String,                              // e.g. "USD"
+    val description: String,                           // what the expense was for
+    val category: String,                              // e.g. "Food"
+    val date: String,                                  // date in "yyyy-MM-dd" format
+    val isOneTimeSplit: Boolean = false,                // true if this is a one-time split
+    val receiptImages: List<String> = emptyList(),     // optional list of receipt image URIs
+    val items: List<ExpenseItemRequest> = emptyList()  // list of items in this expense
+)
+
+// the response object for a single assignment returned by the backend
+data class ItemAssignmentResponse(
+    val id: Long,            // the assignment's unique ID
+    val personName: String,  // the person's name
+    val quantity: Double,    // how many units they are taking
+    val shareAmount: Double  // how much they owe for this item
+)
+
+// the response object for a single item returned by the backend
+data class ExpenseItemResponse(
+    val id: Long,                                              // the item's unique ID
+    val name: String,                                          // item name
+    val unitPrice: Double,                                     // price per unit
+    val quantity: Double,                                      // quantity
+    val totalPrice: Double,                                    // total price for this item
+    val assignments: List<ItemAssignmentResponse> = emptyList() // list of assignments for this item
 )
 
 // the response returned by the backend after creating, updating or fetching an expense
 data class ExpenseResponse(
-    val id: String,                               // the expense's unique ID
-    val paidBy: String,                           // the user ID of whoever paid
-    val groupId: Int?,                            // optional group ID
-    val amount: Double,                           // total amount
-    val currency: String,                         // e.g. "USD"
-    val description: String,                      // what the expense was for
-    val category: String,                         // e.g. "Food"
-    val date: String,                             // date as "yyyy-MM-dd" string
-    val isOneTimeSplit: Boolean,                  // true if one-time split
-    val receiptImages: List<String>               // list of receipt image URIs
+    val id: String,                                        // the expense's unique ID
+    val paidBy: String,                                    // the user ID of whoever paid
+    val groupId: Int?,                                     // optional group ID
+    val amount: Double,                                    // total amount
+    val currency: String,                                  // e.g. "USD"
+    val description: String,                               // what the expense was for
+    val category: String,                                  // e.g. "Food"
+    val date: String,                                      // date as "yyyy-MM-dd" string
+    val isOneTimeSplit: Boolean,                           // true if one-time split
+    val receiptImages: List<String>,                       // list of receipt image URIs
+    val items: List<ExpenseItemResponse> = emptyList()     // list of items in this expense
 )
 
 // the request body sent when scanning a receipt — contains the base64 encoded image

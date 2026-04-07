@@ -5,20 +5,18 @@ import androidx.lifecycle.AndroidViewModel // base class that provides app conte
 import androidx.lifecycle.viewModelScope
 import com.example.moneymapping.data.TokenManager // handles saving and reading tokens from DataStore
 import com.example.moneymapping.network.CreateExpenseRequest
+import com.example.moneymapping.network.ExpenseItemRequest
 import com.example.moneymapping.network.GroupResult
 import com.example.moneymapping.network.RetrofitClient
 import com.example.moneymapping.network.UserSearchResult
 import kotlinx.coroutines.flow.MutableStateFlow // holds a value and emits updates when it changes
 import kotlinx.coroutines.flow.StateFlow // read-only version exposed to the UI
 import kotlinx.coroutines.launch // launches a coroutine for background work
+import com.example.moneymapping.network.ItemAssignmentRequest // the request model for a single assignment
 
-class ExpenseViewModel(application: Application) : AndroidViewModel(application) { // uses AndroidViewModel to access app context for TokenManager
+class ExpenseViewModel(application: Application) : AndroidViewModel(application) {
 
     private val tokenManager = TokenManager(application) // creates TokenManager using app context to access DataStore
-
-    // make the category the mutablestateflow, so basically delete the line val cat... and just change _category into the normal word category and make it public
-    // make it for all.
-    // its used for more secruity but might aswell change it to how flo explained, and make unit tests to make sure things work correctly, because it then looks better and easier to read
 
     // Tracks the current step in the wizard (1 through 6)
     private val _currentStep = MutableStateFlow(1)
@@ -149,6 +147,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
+
     // Searches for existing users by username or email
     fun searchUsers(query: String) {
         if (query.length < 2) { // require at least 2 characters before searching
@@ -192,11 +191,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-
         return shares
     }
 
-    // Submits the expense — refreshes token first, then sends expense data to the backend
+    // Submits the expense — refreshes token first, then sends expense data and items to the backend
     fun submitExpense() {
         viewModelScope.launch {
             _expenseState.value = ExpenseState.Loading // shows loading while submitting
@@ -220,16 +218,39 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
+// Converts the ViewModel items to request items to send to the backend
+                val itemRequests = _items.value.map { item ->
+                    val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size // total quantity assigned across all people
+                    ExpenseItemRequest(
+                        name = item.name,                    // item name
+                        unitPrice = item.unitPrice,          // unit price
+                        quantity = item.quantity.toDouble(), // converts Int quantity to Double for the backend
+                        totalPrice = item.totalPrice,        // total price
+                        assignments = item.assignedTo.map { personName ->
+                            val personQty = item.assignedQuantities[personName] ?: 1 // quantity this person is taking
+                            val shareAmount = if (totalAssignedQty > 0)
+                                (personQty.toDouble() / totalAssignedQty) * item.totalPrice // proportional share
+                            else
+                                item.totalPrice / item.assignedTo.size // equal split fallback
+                            ItemAssignmentRequest(
+                                personName = personName,         // the person's name
+                                quantity = personQty.toDouble(), // their quantity as Double
+                                shareAmount = shareAmount        // how much they owe
+                            )
+                        }
+                    )
+                }
                 // Builds the request object from the current ViewModel state
                 val request = CreateExpenseRequest(
-                    groupId = (_expenseType.value as? ExpenseType.ExistingGroup)?.groupId, // gets group ID if applicable, null otherwise
+                    groupId = (_expenseType.value as? ExpenseType.ExistingGroup)?.groupId, // gets group ID if applicable
                     amount = _items.value.sumOf { it.totalPrice },                          // calculates total from all items
                     currency = _currency.value,                                             // the selected currency
                     description = _description.value,                                       // the expense description
                     category = _category.value,                                             // the selected category
                     date = _date.value,                                                     // the selected date
                     isOneTimeSplit = _expenseType.value is ExpenseType.OneTimeSplit,        // true if one-time split
-                    receiptImages = _receiptImages.value                                    // the list of receipt image URIs
+                    receiptImages = _receiptImages.value,                                   // the list of receipt image URIs
+                    items = itemRequests                                                     // the list of items
                 )
 
                 RetrofitClient.authApi.createExpense("Bearer $accessToken", request) // sends the expense to the backend

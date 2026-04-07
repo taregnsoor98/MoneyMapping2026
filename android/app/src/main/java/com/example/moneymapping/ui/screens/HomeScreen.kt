@@ -1,5 +1,6 @@
 package com.example.moneymapping.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.moneymapping.network.ExpenseResponse
 import com.example.moneymapping.ui.navigation.Screen
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 @Composable
 fun HomeScreen(navController: NavController) { // receives navController to handle navigation
@@ -39,8 +43,9 @@ fun HomeScreen(navController: NavController) { // receives navController to hand
     val expensesState by viewModel.expensesState.collectAsState() // observes the expenses state
     val navBackStackEntry by navController.currentBackStackEntryAsState() // observes navigation changes
 
+    // Re-fetches expenses every time we return to this screen
     LaunchedEffect(navBackStackEntry) {
-        viewModel.fetchExpenses() // re-fetches expenses every time we return to this screen
+        viewModel.fetchExpenses()
     }
 
     Scaffold(
@@ -57,115 +62,151 @@ fun HomeScreen(navController: NavController) { // receives navController to hand
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp) // inner padding for content
+                .padding(16.dp)
         ) {
 
-            // Page title
             Text(
                 text = "My Expenses",
                 style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold // bold for emphasis
+                fontWeight = FontWeight.Bold // bold page title
             )
 
-            Spacer(modifier = Modifier.height(16.dp)) // space between title and list
+            Spacer(modifier = Modifier.height(16.dp))
 
             when (val state = expensesState) {
-
-                // Shows a spinner while loading
-                is ExpensesState.Loading -> {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        CircularProgressIndicator() // spinning loader
-                    }
-                }
-
-                // Shows an error message if fetch failed
-                is ExpensesState.Error -> {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.error // red error text
+                is ExpensesState.Loading -> LoadingContent()   // shows spinner while loading
+                is ExpensesState.Error -> ErrorContent(state.message) // shows error message
+                is ExpensesState.Success -> ExpenseListContent(
+                    expenses = state.expenses,
+                    onExpenseClick = { expense ->
+                        // navigates to the edit screen with the expense ID
+                        navController.navigate(
+                            Screen.DetailExpense.route.replace("{expenseId}", expense.id)
                         )
-                    }
-                }
+                    },
+                    onDeleteClick = { expense -> viewModel.deleteExpense(expense.id) }
+                )
+            }
+        }
+    }
+}
 
-                // Shows the list of expenses if fetch succeeded
-                is ExpensesState.Success -> {
-                    if (state.expenses.isEmpty()) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Text(
-                                text = "No expenses yet. Tap + to add one!",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant // lighter text
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(12.dp) // spacing between cards
-                        ) {
-                            items(state.expenses) { expense ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // subtle shadow
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
+// ─── Sub-composables ──────────────────────────────────────────────────────────
 
-                                            // Shows the expense description
-                                            Text(
-                                                text = expense.description,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold
-                                            )
+// Shows a centered loading spinner
+@Composable
+private fun LoadingContent() {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        CircularProgressIndicator()
+    }
+}
 
-                                            // Determines the expense type label
-                                            val expenseType = when {
-                                                expense.groupId != null && !expense.isOneTimeSplit -> "Group" // belongs to an existing group
-                                                expense.isOneTimeSplit -> "One-time Split"                    // temporary split with others
-                                                else -> "Solo"                                                // personal expense
-                                            }
+// Shows a centered error message
+@Composable
+private fun ErrorContent(message: String) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.error // red error text
+        )
+    }
+}
 
-                                            // Shows category, date and expense type
-                                            Text(
-                                                text = "${expense.category} · ${expense.date} · $expenseType",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant // lighter text
-                                            )
-                                        }
+// Shows the list of expenses or an empty state message
+@Composable
+private fun ExpenseListContent(
+    expenses: List<ExpenseResponse>,              // the list of expenses to display
+    onExpenseClick: (ExpenseResponse) -> Unit,    // called when user taps an expense card
+    onDeleteClick: (ExpenseResponse) -> Unit      // called when user taps the delete button
+) {
+    if (expenses.isEmpty()) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Text(
+                text = "No expenses yet. Tap + to add one!",
+                color = MaterialTheme.colorScheme.onSurfaceVariant // lighter text
+            )
+        }
+    } else {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(12.dp) // spacing between cards
+        ) {
+            items(expenses) { expense ->
+                ExpenseCard(
+                    expense = expense,
+                    onClick = { onExpenseClick(expense) },
+                    onDeleteClick = { onDeleteClick(expense) }
+                )
+            }
+        }
+    }
+}
 
-                                        Column(horizontalAlignment = Alignment.End) {
+// Shows a single expense as a tappable card with description, category, date, type and amount
+@Composable
+private fun ExpenseCard(
+    expense: ExpenseResponse,  // the expense to display
+    onClick: () -> Unit,       // called when the card is tapped
+    onDeleteClick: () -> Unit  // called when the delete button is tapped
+) {
+    // Determines the expense type label based on its properties
+    val expenseType = when {
+        expense.groupId != null && !expense.isOneTimeSplit -> "Group" // belongs to an existing group
+        expense.isOneTimeSplit -> "One-time Split"                     // temporary split with others
+        else -> "Solo"                                                 // personal expense
+    }
 
-                                            // Shows the amount and currency
-                                            Text(
-                                                text = "${expense.currency} ${String.format("%.2f", expense.amount)}",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary // highlights amount
-                                            )
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick), // tapping the card opens the edit screen
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // subtle shadow
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
 
-                                            // Delete button for this expense
-                                            IconButton(onClick = { viewModel.deleteExpense(expense.id) }) {
-                                                Text("🗑️") // trash icon
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                // Shows the expense description
+                Text(
+                    text = expense.description,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Shows category, date and expense type
+                Text(
+                    text = "${expense.category} · ${expense.date} · $expenseType",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant // lighter text
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+
+                // Shows the amount and currency
+                Text(
+                    text = "${expense.currency} ${String.format("%.2f", expense.amount)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary // highlights amount in primary color
+                )
+
+                // Delete button
+                IconButton(onClick = onDeleteClick) {
+                    Text("🗑️") // trash icon
                 }
             }
         }

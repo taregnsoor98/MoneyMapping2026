@@ -35,14 +35,14 @@ class ReceiptController {
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
 
         // Builds the prompt that asks Claude to extract items from the receipt image
+        // The prompt explicitly asks Claude to keep item names in their original language
         val prompt = """
                 You are a receipt parser. I will give you an image of a receipt. Your job is to identify only the purchased items with their quantity, unit price, and total price. 
                 Ignore everything else like store name, cashier name, date, address, totals, taxes, discounts. 
                 Return ONLY a JSON array with no explanation, no markdown, no extra text. Just the raw JSON array. 
                 Each item must have exactly these fields: "name" (string), "quantity" (integer), "unitPrice" (decimal), "totalPrice" (decimal). 
-                Keep item names in their original language exactly as they appear on the receipt.
+                Keep item names in their original language exactly as they appear on the receipt. This includes Arabic, Russian, English or any other language.
                 If you cannot find any items, return an empty array: []""".trimIndent()
-        println("sending request to claude")
 
         // Builds the request body — sends the image directly to Claude as a base64 encoded image
         val requestBody = "{" +
@@ -72,22 +72,23 @@ class ReceiptController {
             val client = HttpClient.newHttpClient() // creates the HTTP client
             val httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.anthropic.com/v1/messages")) // Claude API endpoint
-                .header("Content-Type", "application/json")               // tells the API we're sending JSON
-                .header("x-api-key", anthropicApiKey)                     // authenticates with our API key
-                .header("anthropic-version", "2023-06-01")                // required API version header
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))   // sends the request body
+                .header("Content-Type", "application/json; charset=utf-8") // tells the API we're sending JSON with UTF-8
+                .header("x-api-key", anthropicApiKey)                      // authenticates with our API key
+                .header("anthropic-version", "2023-06-01")                 // required API version header
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, Charsets.UTF_8)) // sends the request body with UTF-8 encoding
                 .build()
 
-            // Sends the request and reads the response with UTF-8 to support all languages including Russian
+            // Sends the request and reads the response with UTF-8 to support all languages including Arabic and Russian
             val response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString(Charsets.UTF_8))
             val responseBody = response.body() // gets the response text
             println(responseBody)
 
             // Parses Claude's response using Jackson to safely extract the text field
-            val mapper = ObjectMapper()                                       // creates a JSON parser
+            val mapper = ObjectMapper().apply {
+                factory.setCharacterEscapes(null) // disables character escaping to preserve Unicode characters like Arabic and Russian
+            }
             val root = mapper.readTree(responseBody)                          // reads the full response
             val rawText = root["content"]?.get(0)?.get("text")?.asText() ?: "[]" // extracts the text field
-
             // Removes markdown code block markers in case Claude wrapped the JSON in them
             val jsonText = rawText
                 .replace(Regex("```json\\s*"), "") // removes opening ```json marker

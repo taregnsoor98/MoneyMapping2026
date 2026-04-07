@@ -117,7 +117,7 @@ fun StepFour(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                             ExpenseItem(
                                 name = scanned.name,            // item name from Claude
                                 unitPrice = scanned.unitPrice,  // unit price from Claude
-                                quantity = scanned.quantity,    // quantity from Claude
+                                quantity = scanned.quantity.toInt().coerceAtLeast(1),    // converts to int, minimum 1
                                 totalPrice = scanned.totalPrice // total price from Claude
                             )
                         )
@@ -403,7 +403,7 @@ fun StepFour(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 // Represents a single item returned by the backend after Claude reads the receipt
 data class ScannedItem(
     val name: String,        // item name from Claude
-    val quantity: Int,       // quantity from Claude
+    val quantity: Double,       // quantity from Claude - double to support weight-based items like 0.265 kg
     val unitPrice: Double,   // unit price from Claude
     val totalPrice: Double   // total price from Claude
 )

@@ -8,7 +8,9 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.moneymapping.ui.expense.AddExpenseScreen // imports the add expense screen
+import com.example.moneymapping.ui.expense.AddExpenseScreen        // imports the add expense screen
+import com.example.moneymapping.ui.screens.EditExpenseScreen       // imports the edit expense screen
+import com.example.moneymapping.ui.screens.ExpenseDetailScreen     // imports the expense detail screen
 import com.example.moneymapping.ui.screens.GroupsScreen
 import com.example.moneymapping.ui.screens.HistoryScreen
 import com.example.moneymapping.ui.screens.HomeScreen
@@ -43,6 +45,26 @@ fun MainScreen() {
             composable(Screen.AddExpense.route) {
                 AddExpenseScreen(
                     onExpenseAdded = { navController.popBackStack() }, // goes back after adding
+                    onBack = { navController.popBackStack() }          // goes back when back button is pressed
+                )
+            }
+            composable(Screen.DetailExpense.route) { backStackEntry ->
+                val expenseId = backStackEntry.arguments?.getString("expenseId") ?: return@composable // gets the expense ID from the route
+                ExpenseDetailScreen(
+                    expenseId = expenseId,                             // passes the expense ID to the detail screen
+                    onEditClick = {
+                        navController.navigate(
+                            Screen.EditExpense.route.replace("{expenseId}", expenseId) // navigates to edit screen
+                        )
+                    },
+                    onBack = { navController.popBackStack() }          // goes back when back is pressed
+                )
+            }
+            composable(Screen.EditExpense.route) { backStackEntry ->
+                val expenseId = backStackEntry.arguments?.getString("expenseId") ?: return@composable // gets the expense ID from the route
+                EditExpenseScreen(
+                    expenseId = expenseId,                             // passes the expense ID to the edit screen
+                    onExpenseSaved = { navController.popBackStack() }, // goes back after saving
                     onBack = { navController.popBackStack() }          // goes back when back button is pressed
                 )
             }
