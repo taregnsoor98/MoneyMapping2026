@@ -28,7 +28,7 @@ class ExpenseDetailViewModel(application: Application) : AndroidViewModel(applic
                         _state.value = ExpenseDetailState.Error("Session expired. Please log in again.")
                         return@launch
                     }
-                val expense = RetrofitClient.authApi.getExpense("Bearer $accessToken", expenseId) // fetches the single expense by ID
+                val expense = RetrofitClient.create(getApplication()).getExpense("Bearer $accessToken", expenseId) // fetches the single expense by ID
                 _state.value = ExpenseDetailState.Loaded(expense) // updates state with the loaded expense
             } catch (e: Exception) {
                 _state.value = ExpenseDetailState.Error("Could not load expense: ${e.message}") // shows error

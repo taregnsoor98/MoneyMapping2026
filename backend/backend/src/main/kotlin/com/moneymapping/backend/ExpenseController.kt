@@ -126,6 +126,24 @@ class ExpenseController(
             expense.toResponse(itemsWithAssignments) // returns expense with items and assignments
         })
     }
+    @GetMapping("/group/{groupId}") // handles GET /expenses/group/{groupId} — returns all expenses for a specific group
+    fun getGroupExpenses(
+        @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
+        @PathVariable groupId: Long                         // reads the group ID from the URL
+    ): ResponseEntity<Any> {
+        val userId = getUserId(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
+
+        val expenses = expenseRepository.findByGroupIdOrderByDateDesc(groupId) // fetches all expenses for this group
+        return ResponseEntity.ok(expenses.map { expense ->
+            val items = expenseItemRepository.findByExpenseId(expense.id) // fetches items for each expense
+            val itemsWithAssignments = items.map { item ->
+                val assignments = itemAssignmentRepository.findByExpenseItemId(item.id) // fetches assignments for each item
+                item to assignments // pairs each item with its assignments
+            }
+            expense.toResponse(itemsWithAssignments) // converts to response object
+        })
+    }
 
     @Transactional // ensures expense, items and assignments are all updated together atomically
     @PutMapping("/{id}") // handles PUT /expenses/{id} — updates an existing expense, its items and assignments

@@ -491,7 +491,7 @@ fun EditExpenseScreen(
                                 viewModel.saveExpense(
                                     expenseId = expenseId,
                                     request = CreateExpenseRequest(
-                                        groupId = currentState.expense.groupId,               // keeps existing group ID
+                                        groupId = currentState.expense.groupId?.toLong(),               // keeps existing group ID
                                         amount = currentState.expense.amount,                // keeps existing amount
                                         currency = currency,                                 // updated currency
                                         description = description,                           // updated description

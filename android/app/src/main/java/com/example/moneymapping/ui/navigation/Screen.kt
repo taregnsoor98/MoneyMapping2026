@@ -11,4 +11,9 @@ sealed class Screen(val route: String) {
     object AddExpense : Screen("add_expense") // route for the add expense screen
     object DetailExpense : Screen("detail_expense/{expenseId}") // route for the expense detail screen //
     object EditExpense : Screen("edit_expense/{expenseId}") // route for the edit expense screen
+    object CreateGroup : Screen("create_group") // route for the create group screen
+    object GroupDetail : Screen("group_detail/{groupId}") // route for the group detail screen
+    object AddGroupExpense : Screen("add_group_expense/{groupId}") // route for adding an expense from inside a group
+    object ManageLimits : Screen("manage_limits/{groupId}") // route for the manage limits screen
+
 }

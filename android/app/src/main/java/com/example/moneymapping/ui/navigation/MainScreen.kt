@@ -15,6 +15,9 @@ import com.example.moneymapping.ui.screens.GroupsScreen
 import com.example.moneymapping.ui.screens.HistoryScreen
 import com.example.moneymapping.ui.screens.HomeScreen
 import com.example.moneymapping.ui.screens.ProfileScreen
+import com.example.moneymapping.ui.screens.CreateGroupScreen       // imports the create group screen
+import com.example.moneymapping.ui.screens.GroupDetailScreen       // imports the group detail screen
+import com.example.moneymapping.ui.screens.ManageLimitsScreen      // imports the manage limits screen
 
 @Composable
 fun MainScreen() {
@@ -40,7 +43,14 @@ fun MainScreen() {
                 HomeScreen(navController = navController) // passes navController so Home can navigate
             }
             composable(Screen.History.route) { HistoryScreen() }  // loads History screen
-            composable(Screen.Groups.route) { GroupsScreen() }    // loads Groups screen
+            composable(Screen.Groups.route) {
+                GroupsScreen(
+                    onNavigateToCreateGroup = { navController.navigate(Screen.CreateGroup.route) }, // navigates to create group screen
+                    onNavigateToGroupDetail = { groupId ->
+                        navController.navigate(Screen.GroupDetail.route.replace("{groupId}", groupId.toString())) // navigates to group detail screen
+                    }
+                )
+            }    // loads Groups screen
             composable(Screen.Profile.route) { ProfileScreen() }  // loads Profile screen
             composable(Screen.AddExpense.route) {
                 AddExpenseScreen(
@@ -58,6 +68,47 @@ fun MainScreen() {
                         )
                     },
                     onBack = { navController.popBackStack() }          // goes back when back is pressed
+                )
+            }
+            composable(Screen.CreateGroup.route) {
+                CreateGroupScreen(
+                    onGroupCreated = { navController.popBackStack() }, // goes back after creating group
+                    onBack = { navController.popBackStack() }          // goes back when back is pressed
+                )
+            }
+            composable(Screen.GroupDetail.route) { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable // gets the group ID from the route
+                GroupDetailScreen(
+                    groupId = groupId.toLong(),                        // passes the group ID to the detail screen
+                    onBack = { navController.popBackStack() },         // goes back when back is pressed
+                    onAddExpense = { gId, memberNames ->
+                        NavigationArgs.pendingGroupMembers = memberNames // stores member names temporarily
+                        navController.navigate(Screen.AddGroupExpense.route.replace("{groupId}", gId.toString())) // navigates to add group expense screen
+                    },
+                    onExpenseClick = { expenseId ->
+                        navController.navigate(Screen.DetailExpense.route.replace("{expenseId}", expenseId)) // navigates to expense detail screen
+                    },
+                    onManageLimits = { gId ->
+                        navController.navigate(Screen.ManageLimits.route.replace("{groupId}", gId.toString())) // navigates to manage limits screen
+                    }
+                )
+            }
+            composable(Screen.ManageLimits.route) { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable // gets the group ID from the route
+                ManageLimitsScreen(
+                    groupId = groupId.toLong(),                        // passes the group ID to the manage limits screen
+                    onBack = { navController.popBackStack() }          // goes back when back is pressed
+                )
+            }
+            composable(Screen.AddGroupExpense.route) { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable // gets the group ID from the route
+                val memberNames = NavigationArgs.pendingGroupMembers  // reads the stored member names
+                NavigationArgs.pendingGroupMembers = emptyList()      // clears the stored member names after reading
+                AddExpenseScreen(
+                    onExpenseAdded = { navController.popBackStack() }, // goes back after adding
+                    onBack = { navController.popBackStack() },         // goes back when back is pressed
+                    groupId = groupId.toLong(),                        // passes the group ID to the expense wizard
+                    memberNames = memberNames                          // passes the member names to the expense wizard
                 )
             }
             composable(Screen.EditExpense.route) { backStackEntry ->

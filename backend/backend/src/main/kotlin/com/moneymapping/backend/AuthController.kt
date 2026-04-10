@@ -86,6 +86,16 @@ class AuthController(
         return ResponseEntity.ok(LoginResponse(newAccessToken, newRefreshToken)) // return new tokens
     }
 
+    @GetMapping("/me") // handles GET /account/me — returns the current logged-in user's ID and username
+    fun me(@RequestHeader("Authorization") authHeader: String): ResponseEntity<Any> {
+        val token = authHeader.removePrefix("Bearer ").trim() // extracts the token from the header
+        val tokenData = execute(VerifyToken(token))           // verifies the token and gets the user ID
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
+        val user = userRepository.findById(tokenData.userId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found")
+        return ResponseEntity.ok(UserSearchResult(user.id, user.username)) // returns the user's ID and username
+    }
+
     @GetMapping("/search") // handles GET /account/search?query=xxx
     fun searchUsers(@RequestParam query: String): ResponseEntity<List<UserSearchResult>> {
         val trimmedQuery = query.trim() // removes any hidden whitespace from the query

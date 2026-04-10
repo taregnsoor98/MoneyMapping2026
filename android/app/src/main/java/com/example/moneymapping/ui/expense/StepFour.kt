@@ -99,7 +99,7 @@ fun StepFour(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                     }
 
                 // Sends the base64 image to the backend
-                val jsonString = RetrofitClient.authApi.scanReceipt(
+                val jsonString = RetrofitClient.create(context).scanReceipt(
                     "Bearer $accessToken",
                     ScanReceiptRequest(
                         base64Image = base64Image, // the base64 encoded image

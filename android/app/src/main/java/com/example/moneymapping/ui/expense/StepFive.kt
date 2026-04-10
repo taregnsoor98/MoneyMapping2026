@@ -2,10 +2,10 @@ package com.example.moneymapping.ui.expense
 
 // Step 5 of the Add Expense wizard
 // Shows each item in the expense and lets the user assign people to each one independently.
-// Each item has its own search field to find existing users or add guests.
-// If an item has quantity > 1, each person can use + and - buttons to pick how many units they take.
-// The share is calculated proportionally based on quantity, or equally if quantity is 1.
-// People limit per item = item quantity. Total assigned quantities cannot exceed item quantity.
+// Each item has its own split mode — BY_QUANTITY or BY_PERCENTAGE.
+// Any number of people can be assigned to any item regardless of quantity.
+// When launched from inside a group, shows only the group members as a dropdown.
+// When launched from the home screen, shows a search field and guest name field.
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,10 +28,14 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -48,17 +52,22 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
-    val items by viewModel.items.collectAsState()             // observes the current items list
-    val searchState by viewModel.searchState.collectAsState() // observes the current search state
+    val items by viewModel.items.collectAsState()               // observes the current items list
+    val searchState by viewModel.searchState.collectAsState()   // observes the current search state
+    val isFromGroup by viewModel.isFromGroup.collectAsState()   // true if launched from inside a group
+    val groupMembers by viewModel.groupMembers.collectAsState() // the group members if launched from a group
 
-    // Tracks which item's search field is currently active
+    // tracks which item's search field is currently active
     var activeSearchIndex by remember { mutableStateOf(-1) }
 
-    // Tracks the search query per item index — fixes the reset bug
+    // tracks the search query per item index
     var searchQueryPerItem by remember { mutableStateOf(mapOf<Int, String>()) }
 
-    // Tracks guest name input per item index
+    // tracks guest name input per item index
     var guestNamePerItem by remember { mutableStateOf(mapOf<Int, String>()) }
+
+    // tracks which item's group member dropdown is expanded
+    var groupMemberDropdownIndex by remember { mutableStateOf(-1) }
 
     Column(
         modifier = Modifier
@@ -74,18 +83,21 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
         )
 
         Text(
-            text = "Search for a user or add a guest for each item. If quantity > 1, set how many units each person takes. Total units assigned cannot exceed the item quantity.",
+            text = if (isFromGroup)
+                "Select group members for each item and choose how to split." // group mode description
+            else
+                "Search for a user or add a guest for each item and choose how to split.", // normal mode description
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant // lighter description color
         )
 
         items.forEachIndexed { index, item ->
 
-            // Calculates how many units are already assigned across all people for this item
+            // calculates how many units are already assigned across all people for this item
             val totalAssigned = item.assignedQuantities.values.sum()
 
-            // The number of people that can still be added — limited by item quantity
-            val canAddMore = item.assignedTo.size < item.quantity
+            // anyone can be added — no limit on number of people per item
+            val canAddMore = true
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -93,7 +105,7 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
 
-                    // Shows item name, quantity and total price
+                    // shows item name, quantity and total price
                     Text(
                         text = "${item.name} — qty: ${item.quantity} — ${String.format("%.2f", item.totalPrice)}",
                         style = MaterialTheme.typography.titleSmall
@@ -101,27 +113,97 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Search field — only shown if more people can be added
-                    if (canAddMore) {
+                    // split mode selector — BY_QUANTITY or BY_PERCENTAGE
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        SegmentedButton(
+                            selected = item.splitMode == SplitMode.BY_QUANTITY, // active if quantity mode
+                            onClick = {
+                                viewModel.updateItem(index, item.copy(splitMode = SplitMode.BY_QUANTITY)) // switches to quantity mode
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                        ) {
+                            Text("By Quantity") // label for quantity mode
+                        }
+                        SegmentedButton(
+                            selected = item.splitMode == SplitMode.BY_PERCENTAGE, // active if percentage mode
+                            onClick = {
+                                viewModel.updateItem(index, item.copy(splitMode = SplitMode.BY_PERCENTAGE)) // switches to percentage mode
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                        ) {
+                            Text("By %") // label for percentage mode
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // add people section
+                    if (isFromGroup) {
+                        // shows group member dropdown when launched from a group
+                        val availableMembers = groupMembers.filter { it !in item.assignedTo } // filters out already assigned members
+
+                        if (availableMembers.isNotEmpty()) {
+                            ExposedDropdownMenuBox(
+                                expanded = groupMemberDropdownIndex == index,
+                                onExpandedChange = {
+                                    groupMemberDropdownIndex = if (groupMemberDropdownIndex == index) -1 else index // toggles dropdown
+                                }
+                            ) {
+                                OutlinedTextField(
+                                    value = "Select a member",                  // placeholder text
+                                    onValueChange = {},
+                                    readOnly = true,                            // user can only select, not type
+                                    label = { Text("Add member") },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = groupMemberDropdownIndex == index) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .menuAnchor()                           // anchors the dropdown to this field
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = groupMemberDropdownIndex == index,
+                                    onDismissRequest = { groupMemberDropdownIndex = -1 } // closes dropdown on dismiss
+                                ) {
+                                    availableMembers.forEach { memberName ->
+                                        DropdownMenuItem(
+                                            text = { Text(memberName) },        // shows the member name
+                                            onClick = {
+                                                val updatedAssigned = item.assignedTo + memberName // adds member to assigned list
+                                                val updatedQuantities = item.assignedQuantities + (memberName to 1) // assigns 1 unit by default
+                                                viewModel.updateItem(
+                                                    index,
+                                                    item.copy(
+                                                        assignedTo = updatedAssigned,
+                                                        assignedQuantities = updatedQuantities
+                                                    )
+                                                )
+                                                groupMemberDropdownIndex = -1   // closes dropdown after selection
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // shows search field when launched from the home screen
                         ExposedDropdownMenuBox(
                             expanded = activeSearchIndex == index && searchState is SearchState.Results,
-                            onExpandedChange = {} // controlled manually
+                            onExpandedChange = {}                               // controlled manually
                         ) {
                             OutlinedTextField(
-                                value = searchQueryPerItem[index] ?: "", // uses per-item query — fixes reset bug
+                                value = searchQueryPerItem[index] ?: "",        // uses per-item query
                                 onValueChange = { query ->
                                     searchQueryPerItem = searchQueryPerItem + (index to query) // stores query per item
-                                    activeSearchIndex = index                                   // marks this item as active
+                                    activeSearchIndex = index                   // marks this item as active
                                     if (query.length >= 2) {
-                                        viewModel.searchUsers(query) // searches if query is long enough
+                                        viewModel.searchUsers(query)            // searches if query is long enough
                                     } else {
-                                        viewModel.resetSearch() // clears results if too short
+                                        viewModel.resetSearch()                 // clears results if too short
                                     }
                                 },
                                 label = { Text("Search user by username or email") },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .menuAnchor(), // anchors the dropdown to this field
+                                    .menuAnchor(),                              // anchors the dropdown to this field
                                 trailingIcon = {
                                     if (activeSearchIndex == index && searchState is SearchState.Loading) {
                                         CircularProgressIndicator(modifier = Modifier.padding(8.dp)) // spinner while searching
@@ -129,31 +211,31 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                                 }
                             )
 
-                            // Shows search results as dropdown for this item only
+                            // shows search results as dropdown for this item only
                             if (activeSearchIndex == index && searchState is SearchState.Results) {
                                 ExposedDropdownMenu(
                                     expanded = true,
                                     onDismissRequest = {
-                                        activeSearchIndex = -1  // clears active search
-                                        viewModel.resetSearch() // clears search results
+                                        activeSearchIndex = -1                  // clears active search
+                                        viewModel.resetSearch()                 // clears search results
                                     }
                                 ) {
                                     (searchState as SearchState.Results).users.forEach { user ->
                                         DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = user.username,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            },
+                                            text = { Text("${user.username} (${user.email})") }, // shows username and email
                                             onClick = {
-                                                if (!item.assignedTo.contains(user.username)) {
-                                                    val updatedAssigned = item.assignedTo + user.username // adds user to assigned list
-                                                    viewModel.updateItem(index, item.copy(assignedTo = updatedAssigned))
-                                                }
-                                                searchQueryPerItem = searchQueryPerItem + (index to "") // clears this item's search field
-                                                activeSearchIndex = -1                                  // clears active search
-                                                viewModel.resetSearch()                                 // clears search results
+                                                val updatedAssigned = item.assignedTo + user.username // adds user to assigned list
+                                                val updatedQuantities = item.assignedQuantities + (user.username to 1) // assigns 1 unit by default
+                                                viewModel.updateItem(
+                                                    index,
+                                                    item.copy(
+                                                        assignedTo = updatedAssigned,
+                                                        assignedQuantities = updatedQuantities
+                                                    )
+                                                )
+                                                searchQueryPerItem = searchQueryPerItem + (index to "") // clears search field
+                                                activeSearchIndex = -1          // clears active search
+                                                viewModel.resetSearch()         // clears search results
                                             }
                                         )
                                     }
@@ -163,27 +245,33 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Guest add row — only shown if more people can be added
+                        // guest name field — only shown in normal mode
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedTextField(
-                                value = guestNamePerItem[index] ?: "", // guest name for this item only
-                                onValueChange = {
-                                    guestNamePerItem = guestNamePerItem + (index to it) // updates guest name for this item
+                                value = guestNamePerItem[index] ?: "",          // uses per-item guest name
+                                onValueChange = { name ->
+                                    guestNamePerItem = guestNamePerItem + (index to name) // stores guest name per item
                                 },
-                                label = { Text("Or add guest name") },
-                                modifier = Modifier.weight(1f)
+                                label = { Text("Or add guest by name") },       // label for guest field
+                                modifier = Modifier.weight(1f)                  // takes remaining width
                             )
-
                             Button(
                                 onClick = {
-                                    val name = guestNamePerItem[index] ?: ""
-                                    if (name.isNotEmpty() && !item.assignedTo.contains(name)) {
-                                        val updatedAssigned = item.assignedTo + name // adds guest to assigned list
-                                        viewModel.updateItem(index, item.copy(assignedTo = updatedAssigned))
+                                    val guestName = guestNamePerItem[index] ?: "" // gets the guest name
+                                    if (guestName.isNotBlank()) {
+                                        val updatedAssigned = item.assignedTo + guestName // adds guest to assigned list
+                                        val updatedQuantities = item.assignedQuantities + (guestName to 1) // assigns 1 unit by default
+                                        viewModel.updateItem(
+                                            index,
+                                            item.copy(
+                                                assignedTo = updatedAssigned,
+                                                assignedQuantities = updatedQuantities
+                                            )
+                                        )
                                         guestNamePerItem = guestNamePerItem + (index to "") // clears guest name field
                                     }
                                 }
@@ -191,16 +279,9 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                                 Text("+") // plus button to add guest
                             }
                         }
-                    } else {
-                        // Shows a message when the people limit has been reached
-                        Text(
-                            text = "Max people reached (${item.quantity})",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant // lighter text
-                        )
                     }
 
-                    // Shows assigned people section if anyone is assigned
+                    // shows assigned people section if anyone is assigned
                     if (item.assignedTo.isNotEmpty()) {
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -216,109 +297,138 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
                         item.assignedTo.forEach { personName ->
 
-                            val personQty = item.assignedQuantities[personName] ?: 1 // current quantity for this person
-
-                            // Calculates how many units this person can still take
-                            // Total of everyone else + this person's current qty cannot exceed item quantity
-                            val othersTotal = totalAssigned - (item.assignedQuantities[personName] ?: 0) // total assigned to everyone else
-                            val maxForThisPerson = item.quantity - othersTotal // max this person can take
-
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-
-                                // Person name chip — tap to remove
+                                // person name chip — tap to remove
                                 FilterChip(
                                     selected = true,
                                     onClick = {
-                                        val updatedAssigned = item.assignedTo - personName          // removes from assigned list
-                                        val updatedQuantities = item.assignedQuantities - personName // removes their quantity
+                                        val updatedAssigned = item.assignedTo - personName               // removes from assigned list
+                                        val updatedQuantities = item.assignedQuantities - personName      // removes their quantity
+                                        val updatedPercentages = item.assignedPercentages - personName    // removes their percentage
                                         viewModel.updateItem(
                                             index,
                                             item.copy(
                                                 assignedTo = updatedAssigned,
-                                                assignedQuantities = updatedQuantities
+                                                assignedQuantities = updatedQuantities,
+                                                assignedPercentages = updatedPercentages
                                             )
                                         )
                                     },
                                     label = { Text("$personName ✕") }
                                 )
 
-                                // Quantity picker — only shown if item has more than 1 unit
-                                if (item.quantity > 1) {
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-
-                                        // Minus button — decreases quantity down to 1
-                                        OutlinedButton(
-                                            onClick = {
-                                                val newQty = (personQty - 1).coerceAtLeast(1) // never goes below 1
-                                                val updatedQuantities = item.assignedQuantities + (personName to newQty)
-                                                viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
-                                            }
+                                when (item.splitMode) {
+                                    SplitMode.BY_PERCENTAGE -> {
+                                        // shows percentage input field
+                                        val currentPct = item.assignedPercentages[personName]?.toString() ?: "" // current percentage
+                                        val totalPct = item.assignedPercentages.values.sum() // total percentage assigned
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            Text("-") // minus label
-                                        }
-
-                                        // Editable quantity field — user can type a number directly
-                                        OutlinedTextField(
-                                            value = personQty.toString(),
-                                            onValueChange = { input ->
-                                                val typed = input.toIntOrNull() ?: 1                     // converts to int safely
-                                                val clamped = typed.coerceIn(1, maxForThisPerson)        // clamps between 1 and max for this person
-                                                val updatedQuantities = item.assignedQuantities + (personName to clamped)
-                                                viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
-                                            },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), // shows number keyboard
-                                            modifier = Modifier.width(64.dp), // fixed width for the number field
-                                            singleLine = true                  // keeps it on one line
-                                        )
-
-                                        // Plus button — increases quantity but never exceeds max for this person
-                                        OutlinedButton(
-                                            onClick = {
-                                                val newQty = (personQty + 1).coerceAtMost(maxForThisPerson) // never exceeds max
-                                                val updatedQuantities = item.assignedQuantities + (personName to newQty)
-                                                viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
+                                            OutlinedTextField(
+                                                value = currentPct,
+                                                onValueChange = { input ->
+                                                    val typed = input.toDoubleOrNull()     // converts to double safely
+                                                    if (typed != null) {
+                                                        val updatedPercentages = item.assignedPercentages + (personName to typed) // updates percentage
+                                                        viewModel.updateItem(index, item.copy(assignedPercentages = updatedPercentages))
+                                                    }
+                                                },
+                                                label = { Text("%") },                     // label for percentage field
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), // shows number keyboard
+                                                modifier = Modifier.width(80.dp),          // fixed width for percentage field
+                                                singleLine = true                          // keeps it on one line
+                                            )
+                                            // shows warning if percentages don't add up to 100
+                                            if (totalPct != 100.0 && item.assignedPercentages.size == item.assignedTo.size) {
+                                                Text(
+                                                    text = "${String.format("%.1f", totalPct)}%", // shows current total
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (totalPct == 100.0) MaterialTheme.colorScheme.primary // green if 100%
+                                                    else MaterialTheme.colorScheme.error              // red if not 100%
+                                                )
                                             }
-                                        ) {
-                                            Text("+") // plus label
                                         }
+                                    }
+                                    SplitMode.BY_QUANTITY -> {
+                                        val personQty = item.assignedQuantities[personName] ?: 1 // current quantity for this person
+                                        val othersTotal = totalAssigned - (item.assignedQuantities[personName] ?: 0) // total assigned to everyone else
+                                        val maxForThisPerson = item.quantity - othersTotal // max this person can take
 
-                                        // Shows this person's calculated share
-                                        val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size
-                                        val personShare = (personQty.toDouble() / totalAssignedQty) * item.totalPrice
-                                        Text(
-                                            text = String.format("%.2f", personShare),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary // highlights share in primary color
-                                        )
+                                        // quantity picker — only shown if item has more than 1 unit
+                                        if (item.quantity > 1) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                // minus button — decreases quantity down to 1
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val newQty = (personQty - 1).coerceAtLeast(1) // never goes below 1
+                                                        val updatedQuantities = item.assignedQuantities + (personName to newQty)
+                                                        viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
+                                                    }
+                                                ) {
+                                                    Text("-") // minus label
+                                                }
+
+                                                // editable quantity field
+                                                OutlinedTextField(
+                                                    value = personQty.toString(),
+                                                    onValueChange = { input ->
+                                                        val typed = input.toIntOrNull() ?: 1             // converts to int safely
+                                                        val clamped = typed.coerceIn(1, maxForThisPerson) // clamps between 1 and max
+                                                        val updatedQuantities = item.assignedQuantities + (personName to clamped)
+                                                        viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
+                                                    },
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                    modifier = Modifier.width(64.dp),      // fixed width for the number field
+                                                    singleLine = true                      // keeps it on one line
+                                                )
+
+                                                // plus button
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val newQty = (personQty + 1).coerceAtMost(maxForThisPerson) // never exceeds max
+                                                        val updatedQuantities = item.assignedQuantities + (personName to newQty)
+                                                        viewModel.updateItem(index, item.copy(assignedQuantities = updatedQuantities))
+                                                    }
+                                                ) {
+                                                    Text("+") // plus label
+                                                }
+
+                                                // shows this person's calculated share
+                                                val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size
+                                                val personShare = (personQty.toDouble() / totalAssignedQty) * item.totalPrice
+                                                Text(
+                                                    text = String.format("%.2f", personShare),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        } else {
+                                            // shows equal split summary if quantity is 1
+                                            Text(
+                                                text = "Pays: ${String.format("%.2f", item.totalPrice / item.assignedTo.size)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Shows equal split summary if quantity is 1
-                        if (item.quantity == 1) {
-                            Text(
-                                text = "Each pays: ${String.format("%.2f", item.totalPrice / item.assignedTo.size)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
                         }
                     }
                 }
             }
         }
 
-        // Next button to move to Step 6
+        // next button to move to Step 6
         Button(
             onClick = { viewModel.nextStep() },
             modifier = Modifier.fillMaxWidth()

@@ -1,8 +1,9 @@
 package com.example.moneymapping.ui.expense
 
 // Step 3 of the Add Expense wizard
-// Asks the user whether this expense is solo (only affects their own budget),
-// shared with an existing group, or a one-time split with manually added participants.
+// Asks the user whether this expense is solo (only affects their own budget)
+// or shared with an existing group (FRIEND or FAMILY only).
+// ONE_TIME groups are excluded — expenses for those are added from inside the group.
 // If the user picks an existing group, it fetches their real groups from the backend.
 // Shows a loading state while fetching and an error if the fetch fails.
 
@@ -39,17 +40,17 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun StepThree(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
-    // Observes the current expense type and groups state from the ViewModel
+    // observes the current expense type and groups state from the ViewModel
     val expenseType by viewModel.expenseType.collectAsState()
     val groupsState by viewModel.groupsState.collectAsState()
 
-    // Tracks whether the group dropdown is expanded
+    // tracks whether the group dropdown is expanded
     var groupExpanded by remember { mutableStateOf(false) }
 
-    // Tracks the currently selected group name for display
+    // tracks the currently selected group name for display
     var selectedGroupName by remember { mutableStateOf("") }
 
-    // Fetches groups when the user selects existing group option
+    // fetches groups when the user selects existing group option
     LaunchedEffect(expenseType) {
         if (expenseType is ExpenseType.ExistingGroup) {
             viewModel.fetchGroups() // fetches groups using the stored token from DataStore
@@ -57,76 +58,78 @@ fun StepThree(viewModel: ExpenseViewModel) { // receives the shared ViewModel
     }
 
     Column(
-        modifier = Modifier.fillMaxSize(), // takes up the full screen
-        verticalArrangement = Arrangement.Center, // centers content vertically
-        horizontalAlignment = Alignment.CenterHorizontally // centers content horizontally
+        modifier = Modifier.fillMaxSize(),                        // takes up the full screen
+        verticalArrangement = Arrangement.Center,                 // centers content vertically
+        horizontalAlignment = Alignment.CenterHorizontally        // centers content horizontally
     ) {
 
-        // Title asking the user how this expense is shared
+        // title asking the user how this expense is shared
         Text(
             text = "Is this expense solo or shared?",
-            style = MaterialTheme.typography.titleLarge // large title style
+            style = MaterialTheme.typography.titleLarge            // large title style
         )
 
-        Spacer(modifier = Modifier.height(32.dp)) // space between title and buttons
+        Spacer(modifier = Modifier.height(32.dp))                 // space between title and buttons
 
-        // Button for solo expense — only affects the user's own budget
+        // button for solo expense — only affects the user's own budget
         Button(
             onClick = {
-                viewModel.setExpenseType(ExpenseType.Solo) // sets type to solo
-                viewModel.nextStep()                        // moves to step 4
+                viewModel.setExpenseType(ExpenseType.Solo)        // sets type to solo
+                viewModel.nextStep()                               // moves to step 4
             },
-            modifier = Modifier.fillMaxWidth() // button takes full width
+            modifier = Modifier.fillMaxWidth()                    // button takes full width
         ) {
-            Text("Solo — just me") // label for solo option
+            Text("Solo — just me")                                // label for solo option
         }
 
-        Spacer(modifier = Modifier.height(16.dp)) // space between buttons
+        Spacer(modifier = Modifier.height(16.dp))                 // space between buttons
 
-        // Button for sharing with an existing group
+        // button for sharing with an existing group
         OutlinedButton(
             onClick = {
                 viewModel.setExpenseType(ExpenseType.ExistingGroup(0)) // sets type to existing group
             },
-            modifier = Modifier.fillMaxWidth() // button takes full width
+            modifier = Modifier.fillMaxWidth()                    // button takes full width
         ) {
-            Text("Existing Group") // label for existing group option
+            Text("Existing Group")                                // label for existing group option
         }
 
-        // Shows group picker only when existing group is selected
+        // shows group picker only when existing group is selected
         if (expenseType is ExpenseType.ExistingGroup) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
             when (groupsState) {
 
-                // Shows loading spinner while fetching groups
+                // shows loading spinner while fetching groups
                 is GroupsState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp)) // spinner while loading
                 }
 
-                // Shows error message if fetch failed
+                // shows error message if fetch failed
                 is GroupsState.Error -> {
                     Text(
                         text = (groupsState as GroupsState.Error).message,
-                        color = MaterialTheme.colorScheme.error, // red error text
+                        color = MaterialTheme.colorScheme.error,  // red error text
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
 
-                // Shows group dropdown when groups are loaded
+                // shows group dropdown when groups are loaded
                 is GroupsState.Success -> {
-                    val groups = (groupsState as GroupsState.Success).groups // gets the loaded groups
+                    // filters out ONE_TIME groups — those only accept expenses from inside the group
+                    val groups = (groupsState as GroupsState.Success).groups
+                        .filter { it.type != "ONE_TIME" } // excludes ONE_TIME groups from the list
 
                     if (groups.isEmpty()) {
-                        // Shows message if user has no groups yet
+                        // shows message if user has no eligible groups yet
                         Text(
                             text = "You have no groups yet. Create one in the Groups tab!",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
-                        // Shows dropdown to pick a group
+                        // shows dropdown to pick a group
                         ExposedDropdownMenuBox(
                             expanded = groupExpanded,
                             onExpandedChange = { groupExpanded = !groupExpanded } // toggles dropdown
@@ -134,12 +137,12 @@ fun StepThree(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                             OutlinedTextField(
                                 value = selectedGroupName.ifEmpty { "Select a group" }, // shows selected group name
                                 onValueChange = {},
-                                readOnly = true, // user can only select, not type
+                                readOnly = true,                  // user can only select, not type
                                 label = { Text("Group") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = groupExpanded) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .menuAnchor() // anchors the dropdown to this field
+                                    .menuAnchor()                 // anchors the dropdown to this field
                             )
                             ExposedDropdownMenu(
                                 expanded = groupExpanded,
@@ -150,20 +153,20 @@ fun StepThree(viewModel: ExpenseViewModel) { // receives the shared ViewModel
                                         text = {
                                             Column {
                                                 Text(
-                                                    text = group.name, // shows group name
+                                                    text = group.name,                             // shows group name
                                                     style = MaterialTheme.typography.bodyMedium
                                                 )
                                                 Text(
-                                                    text = group.type, // shows group type below name
+                                                    text = group.type,                             // shows group type below name
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         },
                                         onClick = {
-                                            selectedGroupName = group.name                            // updates display name
+                                            selectedGroupName = group.name                         // updates display name
                                             viewModel.setExpenseType(ExpenseType.ExistingGroup(group.id)) // updates ViewModel with real group id
-                                            groupExpanded = false                                     // closes dropdown
+                                            groupExpanded = false                                  // closes dropdown
                                         }
                                     )
                                 }
@@ -172,32 +175,19 @@ fun StepThree(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Next button — only enabled if a group is selected
+                        // next button — only enabled if a group is selected
                         Button(
-                            onClick = { viewModel.nextStep() }, // moves to step 4
+                            onClick = { viewModel.nextStep() },   // moves to step 4
                             modifier = Modifier.fillMaxWidth(),
                             enabled = selectedGroupName.isNotEmpty() // only enabled if a group is picked
                         ) {
-                            Text("Next") // next button label
+                            Text("Next")                          // next button label
                         }
                     }
                 }
 
-                else -> {} // idle state — shows nothing
+                else -> {}                                        // idle state — shows nothing
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp)) // space between buttons
-
-        // Button for a one-time split with manually added participants
-        OutlinedButton(
-            onClick = {
-                viewModel.setExpenseType(ExpenseType.OneTimeSplit) // sets type to one-time split
-                viewModel.nextStep()                                // moves to step 4
-            },
-            modifier = Modifier.fillMaxWidth() // button takes full width
-        ) {
-            Text("One-time Split") // label for one-time split option
         }
     }
 }

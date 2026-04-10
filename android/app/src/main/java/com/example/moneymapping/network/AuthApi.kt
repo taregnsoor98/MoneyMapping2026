@@ -19,11 +19,23 @@ interface AuthApi {
     @POST("account/refresh") // tells Retrofit this is a POST request to /account/refresh
     suspend fun refresh(@Header("Authorization") token: String): TokenResponse // refreshes the access token
 
+    @GET("account/me") // tells Retrofit this is a GET request to /account/me
+    suspend fun getMe(@Header("Authorization") token: String): UserSearchResult // returns the current logged-in user's ID and username
+
     @GET("account/search") // tells Retrofit this is a GET request to /account/search?query=xxx
     suspend fun searchUsers(@Query("query") query: String): List<UserSearchResult> // searches for users by username or email
 
     @GET("groups") // tells Retrofit this is a GET request to /groups
-    suspend fun getGroups(@Header("Authorization") token: String): List<GroupResult> // fetches the user's groups
+    suspend fun getGroups(@Header("Authorization") token: String): List<GroupResponse> // fetches the user's groups
+
+    @POST("groups") // tells Retrofit this is a POST request to /groups
+    suspend fun createGroup(@Header("Authorization") token: String, @Body request: CreateGroupRequest): GroupResponse // creates a new group
+
+    @POST("groups/{id}/members") // tells Retrofit this is a POST request to /groups/{id}/members
+    suspend fun addMember(@Header("Authorization") token: String, @Path("id") id: Long, @Body request: AddMemberRequest): GroupMemberResponse // adds a member to a group
+
+    @PUT("groups/{id}/members/{memberId}/promote") // tells Retrofit this is a PUT request to promote a member
+    suspend fun promoteMember(@Header("Authorization") token: String, @Path("id") id: Long, @Path("memberId") memberId: Long): GroupMemberResponse // promotes a member to admin
 
     @POST("expenses") // tells Retrofit this is a POST request to /expenses
     suspend fun createExpense(@Header("Authorization") token: String, @Body request: CreateExpenseRequest): ExpenseResponse // saves a new expense to the backend
@@ -40,8 +52,23 @@ interface AuthApi {
     @DELETE("expenses/{id}") // tells Retrofit this is a DELETE request to /expenses/{id}
     suspend fun deleteExpense(@Header("Authorization") token: String, @Path("id") id: String): String // deletes an expense by its ID
 
+    @GET("expenses/group/{groupId}") // tells Retrofit this is a GET request to /expenses/group/{groupId}
+    suspend fun getGroupExpenses(@Header("Authorization") token: String, @Path("groupId") groupId: Long): List<ExpenseResponse> // fetches all expenses for a specific group
+
     @POST("receipt/scan") // tells Retrofit this is a POST request to /receipt/scan
     suspend fun scanReceipt(@Header("Authorization") token: String, @Body request: ScanReceiptRequest): String // sends base64 image to backend and gets back a JSON list of items
+
+    @POST("limits/personal") // tells Retrofit this is a POST request to /limits/personal
+    suspend fun setPersonalLimit(@Header("Authorization") token: String, @Body request: SetLimitRequest): SpendingLimitResponse // sets or updates the personal limit
+
+    @GET("limits/personal") // tells Retrofit this is a GET request to /limits/personal
+    suspend fun getPersonalLimit(@Header("Authorization") token: String): SpendingLimitResponse // returns the personal limit
+
+    @POST("limits/group/{groupId}") // tells Retrofit this is a POST request to /limits/group/{groupId}
+    suspend fun setGroupLimit(@Header("Authorization") token: String, @Path("groupId") groupId: Long, @Body request: SetLimitRequest): SpendingLimitResponse // sets or updates a group limit
+
+    @GET("limits/group/{groupId}") // tells Retrofit this is a GET request to /limits/group/{groupId}
+    suspend fun getGroupLimits(@Header("Authorization") token: String, @Path("groupId") groupId: Long): List<SpendingLimitResponse> // returns all limits for a group
 }
 
 // the result returned for each matching user from the search endpoint
@@ -49,13 +76,6 @@ data class UserSearchResult(
     val id: String,       // the user's unique id
     val username: String, // the user's username
     val email: String     // the user's email
-)
-
-// the result returned for each group the user belongs to
-data class GroupResult(
-    val id: Int,          // the group's unique id
-    val name: String,     // the group's display name
-    val type: String      // the group type — "family", "friends", or "one_time"
 )
 
 // the request body for a single assignment sent when creating or updating an expense
@@ -76,7 +96,7 @@ data class ExpenseItemRequest(
 
 // the request body sent when creating or updating an expense
 data class CreateExpenseRequest(
-    val groupId: Int? = null,                          // optional group ID — null for solo expenses
+    val groupId: Long? = null,                          // optional group ID — null for solo expenses
     val amount: Double,                                // total amount of the expense
     val currency: String,                              // e.g. "USD"
     val description: String,                           // what the expense was for
@@ -124,4 +144,51 @@ data class ExpenseResponse(
 data class ScanReceiptRequest(
     val base64Image: String, // the receipt image encoded as base64
     val mediaType: String    // the image type e.g. "image/jpeg" or "image/png"
+)
+
+// the request body sent when creating a group
+data class CreateGroupRequest(
+    val name: String, // the group name
+    val type: String  // FRIEND, FAMILY, or ONE_TIME
+)
+
+// the request body sent when adding a member to a group
+data class AddMemberRequest(
+    val userId: String?,    // the user ID — null if adding a guest
+    val guestName: String?  // the guest name — null if adding a real user
+)
+
+// the response object for a group member returned by the backend
+data class GroupMemberResponse(
+    val id: Long,           // the membership ID
+    val userId: String?,    // the user ID — null if guest
+    val username: String?,  // the username — null if guest
+    val guestName: String?, // the guest name — null if real user
+    val role: String        // ADMIN or MEMBER
+)
+
+// the request body sent when setting a limit
+data class SetLimitRequest(
+    val amount: Double,              // the limit amount
+    val period: String,              // the period — "DAILY", "WEEKLY", or "MONTHLY"
+    val targetUserId: String? = null // the user to set the limit for — null for group-wide limit
+)
+
+// the response object for a spending limit returned by the backend
+data class SpendingLimitResponse(
+    val id: Long,                    // the limit's unique ID
+    val groupId: Long?,              // the group this limit belongs to — null if personal
+    val userId: String?,             // the user this limit belongs to — null if group-wide
+    val amount: Double,              // the limit amount
+    val period: String               // the period — "DAILY", "WEEKLY", or "MONTHLY"
+)
+
+// the response object for a group returned by the backend
+data class GroupResponse(
+    val id: Long,                          // the group ID
+    val name: String,                      // the group name
+    val type: String,                      // FRIEND, FAMILY, or ONE_TIME
+    val createdBy: String,                 // the user ID of the creator
+    val isLocked: Boolean,                 // true if the group is closed and read-only
+    val members: List<GroupMemberResponse> // list of members in this group
 )

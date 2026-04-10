@@ -4,7 +4,6 @@ package com.example.moneymapping.ui.expense
 // Shows a full summary of the expense including all items, their assignments,
 // and how much each person owes in total broken down by item.
 // The user can review everything and hit Confirm to save the expense.
-// Later, the user will be able to set up installment plans for each person's share.
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -38,25 +37,21 @@ fun StepSix(
     onExpenseAdded: () -> Unit   // callback to navigate back after successful submission
 ) {
 
-    // Observes all the data from the ViewModel for the summary
-    val description by viewModel.description.collectAsState()
-    val date by viewModel.date.collectAsState()
-    val currency by viewModel.currency.collectAsState()
-    val category by viewModel.category.collectAsState()
-    val items by viewModel.items.collectAsState()
-    val expenseState by viewModel.expenseState.collectAsState()
+    val description by viewModel.description.collectAsState()  // observes the expense description
+    val date by viewModel.date.collectAsState()                 // observes the expense date
+    val currency by viewModel.currency.collectAsState()         // observes the expense currency
+    val category by viewModel.category.collectAsState()         // observes the expense category
+    val items by viewModel.items.collectAsState()               // observes the expense items
+    val expenseState by viewModel.expenseState.collectAsState() // observes the submission state
 
-    // Calculates how much each person owes based on item assignments
-    val shares = viewModel.calculateShares()
+    val shares = viewModel.calculateShares() // calculates how much each person owes
+    val totalAmount = items.sumOf { it.totalPrice } // calculates the total expense amount
 
-    // Calculates the total expense amount by summing all item totals
-    val totalAmount = items.sumOf { it.totalPrice }
-
-    // Navigates back automatically when submission is successful
+    // navigates back automatically when submission is successful
     LaunchedEffect(expenseState) {
         if (expenseState is ExpenseState.Success) {
-            viewModel.resetAll()  // resets the ViewModel back to initial state
-            onExpenseAdded()      // navigates back to home screen
+            viewModel.resetAll() // resets the ViewModel back to initial state
+            onExpenseAdded()     // navigates back to home screen
         }
     }
 
@@ -68,13 +63,13 @@ fun StepSix(
         verticalArrangement = Arrangement.spacedBy(12.dp) // spacing between elements
     ) {
 
-        // Step title
+        // step title
         Text(
             text = "Review & Confirm",
             style = MaterialTheme.typography.titleLarge // large title style
         )
 
-        // Basic expense info card
+        // basic expense info card
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // subtle shadow
@@ -88,7 +83,6 @@ fun StepSix(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Shows description
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -97,7 +91,6 @@ fun StepSix(
                     Text(text = description, style = MaterialTheme.typography.bodyMedium)
                 }
 
-                // Shows date
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -106,7 +99,6 @@ fun StepSix(
                     Text(text = date, style = MaterialTheme.typography.bodyMedium)
                 }
 
-                // Shows currency
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -115,7 +107,6 @@ fun StepSix(
                     Text(text = currency, style = MaterialTheme.typography.bodyMedium)
                 }
 
-                // Shows category
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -126,7 +117,6 @@ fun StepSix(
 
                 Divider(modifier = Modifier.padding(vertical = 8.dp)) // divider line
 
-                // Shows the total amount
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -146,7 +136,7 @@ fun StepSix(
             }
         }
 
-        // Items breakdown card — shows each item with who is assigned and their share
+        // items breakdown card — shows each item with who is assigned and their share
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -160,7 +150,6 @@ fun StepSix(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Shows each item with assigned people and per person share
                 items.forEach { item ->
 
                     Row(
@@ -178,12 +167,21 @@ fun StepSix(
                         )
                     }
 
-                    // Shows who is assigned to this item and their share
+                    // shows who is assigned to this item and their share
                     if (item.assignedTo.isNotEmpty()) {
-                        val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size // total assigned quantity
                         item.assignedTo.forEach { person ->
+                            val personShare = when (item.splitMode) {
+                                SplitMode.BY_PERCENTAGE -> {
+                                    val percentage = item.assignedPercentages[person] ?: (100.0 / item.assignedTo.size) // uses percentage or equal split
+                                    (percentage / 100.0) * item.totalPrice // calculates share from percentage
+                                }
+                                SplitMode.BY_QUANTITY -> {
+                                    val totalAssignedQty = item.assignedQuantities.values.sum().takeIf { it > 0 } ?: item.assignedTo.size // total assigned quantity
+                                    val personQty = item.assignedQuantities[person] ?: 1 // quantity this person is taking
+                                    (personQty.toDouble() / totalAssignedQty) * item.totalPrice // proportional share
+                                }
+                            }
                             val personQty = item.assignedQuantities[person] ?: 1 // quantity this person is taking
-                            val personShare = (personQty.toDouble() / totalAssignedQty) * item.totalPrice // proportional share
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -191,19 +189,22 @@ fun StepSix(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = if (item.quantity > 1) "$person (x$personQty)" else person, // shows quantity if item has more than 1
+                                    text = when (item.splitMode) {
+                                        SplitMode.BY_PERCENTAGE -> "$person (${item.assignedPercentages[person] ?: 0.0}%)" // shows percentage
+                                        SplitMode.BY_QUANTITY -> if (item.quantity > 1) "$person (x$personQty)" else person // shows quantity
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant // lighter color for person name
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "$currency ${String.format("%.2f", personShare)}", // shows their proportional share
+                                    text = "$currency ${String.format("%.2f", personShare)}", // shows their share
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     } else {
-                        // Shows a warning if no one is assigned to this item
+                        // shows a warning if no one is assigned to this item
                         Text(
                             text = "No one assigned",
                             style = MaterialTheme.typography.bodySmall,
@@ -217,7 +218,7 @@ fun StepSix(
             }
         }
 
-        // Total per person summary card — shows how much each person owes in total
+        // total per person summary card — shows how much each person owes in total
         if (shares.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -232,7 +233,6 @@ fun StepSix(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Shows each person's total share across all items
                     shares.forEach { (person, amount) ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -255,7 +255,7 @@ fun StepSix(
             }
         }
 
-        // Shows error message if submission fails
+        // shows error message if submission fails
         if (expenseState is ExpenseState.Error) {
             Text(
                 text = (expenseState as ExpenseState.Error).message,
@@ -263,7 +263,7 @@ fun StepSix(
             )
         }
 
-        // Confirm button to submit the expense
+        // confirm button to submit the expense
         Button(
             onClick = { viewModel.submitExpense() }, // submits the expense to the backend
             modifier = Modifier.fillMaxWidth(),

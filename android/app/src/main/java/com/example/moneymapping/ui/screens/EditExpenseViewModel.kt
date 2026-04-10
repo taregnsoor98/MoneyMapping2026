@@ -41,7 +41,7 @@ class EditExpenseViewModel(application: Application) : AndroidViewModel(applicat
                         _state.value = EditExpenseState.Error("Session expired. Please log in again.")
                         return@launch
                     }
-                val expense = RetrofitClient.authApi.getExpense("Bearer $accessToken", expenseId) // fetches the single expense by ID
+                val expense = RetrofitClient.create(getApplication()).getExpense("Bearer $accessToken", expenseId) // fetches the single expense by ID
                 _editableItems.value = expense.items.map { it.toEditableItem() } // converts items to editable items
                 _state.value = EditExpenseState.Loaded(expense) // updates state with the loaded expense
             } catch (e: Exception) {
@@ -78,7 +78,7 @@ class EditExpenseViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _searchState.value = EditSearchState.Loading // shows loading while searching
             try {
-                val results = RetrofitClient.authApi.searchUsers(query) // calls the search endpoint
+                val results = RetrofitClient.create(getApplication()).searchUsers(query) // calls the search endpoint
                 _searchState.value = EditSearchState.Results(results)   // updates state with results
             } catch (e: Exception) {
                 _searchState.value = EditSearchState.Error("Search failed: ${e.message}") // shows error
@@ -130,7 +130,7 @@ class EditExpenseViewModel(application: Application) : AndroidViewModel(applicat
                     items = itemRequests                                    // updated items list
                 )
 
-                RetrofitClient.authApi.updateExpense("Bearer $accessToken", expenseId, finalRequest) // calls PUT /expenses/{id}
+                RetrofitClient.create(getApplication()).updateExpense("Bearer $accessToken", expenseId, finalRequest) // calls PUT /expenses/{id}
                 _state.value = EditExpenseState.Saved // marks as saved successfully
             } catch (e: Exception) {
                 _state.value = EditExpenseState.Error("Could not save expense: ${e.message}") // shows error

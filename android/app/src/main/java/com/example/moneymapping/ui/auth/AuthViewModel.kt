@@ -22,7 +22,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) { 
         viewModelScope.launch { // runs in background so UI doesn't freeze
             _authState.value = AuthState.Loading // show loading indicator while waiting for server
             try {
-                val message = RetrofitClient.authApi.register(RegisterRequest(email, username, password)) // sends register request to the server
+                val message = RetrofitClient.create(getApplication()).register(RegisterRequest(email, username, password)) // sends register request to the server
                 _authState.value = AuthState.RegisterSuccess(message) // registration worked, show success message from server
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Register failed") // something went wrong, show error message
@@ -34,8 +34,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) { 
         viewModelScope.launch { // runs in background so UI doesn't freeze
             _authState.value = AuthState.Loading // show loading indicator while waiting for server
             try {
-                val response = RetrofitClient.authApi.login(LoginRequest(emailOrUsername, password)) // sends login request to the server
-                tokenManager.saveTokens(response.accessToken, response.refreshToken) // saves both tokens to DataStore so they persist across app restarts
+                val response = RetrofitClient.create(getApplication()).login(LoginRequest(emailOrUsername, password)) // sends login request to the server
+                val me = RetrofitClient.create(getApplication()).getMe("Bearer ${response.accessToken}") // fetches the current user's ID
+                tokenManager.saveTokens(response.accessToken, response.refreshToken, me.id) // saves tokens and user ID to DataStore
                 _authState.value = AuthState.LoginSuccess(response.accessToken, response.refreshToken) // login worked, update state with tokens
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Login failed") // something went wrong, show error message

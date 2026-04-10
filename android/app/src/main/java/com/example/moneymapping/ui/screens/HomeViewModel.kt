@@ -32,7 +32,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) { 
                         _expensesState.value = ExpensesState.Error("Session expired. Please log in again.")
                         return@launch // stops if no token is found
                     }
-                val expenses = RetrofitClient.authApi.getExpenses("Bearer $accessToken") // calls GET /expenses
+                val expenses = RetrofitClient.create(getApplication()).getExpenses("Bearer $accessToken") // calls GET /expenses
                 _expensesState.value = ExpensesState.Success(expenses)                   // updates state with fetched expenses
             } catch (e: Exception) {
                 _expensesState.value = ExpensesState.Error("Could not load expenses: ${e.message}") // shows error if fetch fails
@@ -46,7 +46,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) { 
             try {
                 val accessToken = tokenManager.getAccessToken() // gets the stored access token
                     ?: return@launch // stops if no token is found
-                RetrofitClient.authApi.deleteExpense("Bearer $accessToken", id) // calls DELETE /expenses/{id}
+                RetrofitClient.create(getApplication()).deleteExpense("Bearer $accessToken", id) // calls DELETE /expenses/{id}
                 fetchExpenses() // refreshes the list after deletion
             } catch (e: Exception) {
                 _expensesState.value = ExpensesState.Error("Could not delete expense: ${e.message}") // shows error if delete fails
