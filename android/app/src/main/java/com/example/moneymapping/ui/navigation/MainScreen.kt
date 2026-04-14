@@ -18,6 +18,8 @@ import com.example.moneymapping.ui.screens.ProfileScreen
 import com.example.moneymapping.ui.screens.CreateGroupScreen       // imports the create group screen
 import com.example.moneymapping.ui.screens.GroupDetailScreen       // imports the group detail screen
 import com.example.moneymapping.ui.screens.ManageLimitsScreen      // imports the manage limits screen
+import com.example.moneymapping.ui.screens.PaymentPlanSetupScreen  // imports the payment plan setup screen
+import com.example.moneymapping.ui.screens.PaymentPlanTrackingScreen // imports the payment plan tracking screen
 
 @Composable
 fun MainScreen() {
@@ -50,7 +52,7 @@ fun MainScreen() {
                         navController.navigate(Screen.GroupDetail.route.replace("{groupId}", groupId.toString())) // navigates to group detail screen
                     }
                 )
-            }    // loads Groups screen
+            }
             composable(Screen.Profile.route) { ProfileScreen() }  // loads Profile screen
             composable(Screen.AddExpense.route) {
                 AddExpenseScreen(
@@ -90,6 +92,24 @@ fun MainScreen() {
                     },
                     onManageLimits = { gId ->
                         navController.navigate(Screen.ManageLimits.route.replace("{groupId}", gId.toString())) // navigates to manage limits screen
+                    },
+                    onPaymentPlan = { gId, fromUserId, toUserId, amount ->
+                        // navigates to the payment plan setup screen — encodes all 4 values into the route
+                        navController.navigate(
+                            Screen.PaymentPlanSetup.route
+                                .replace("{groupId}", gId.toString())
+                                .replace("{fromUserId}", fromUserId)
+                                .replace("{toUserId}", toUserId)
+                                .replace("{amount}", amount.toString())
+                        )
+                    },
+                    onViewPaymentPlan = { planId, gId ->
+                        // navigates to the tracking screen when a payment plan card is tapped
+                        navController.navigate(
+                            Screen.PaymentPlanTracking.route
+                                .replace("{planId}", planId.toString()) // inserts the plan ID into the route
+                                .replace("{groupId}", gId.toString())   // inserts the group ID into the route
+                        )
                     }
                 )
             }
@@ -117,6 +137,38 @@ fun MainScreen() {
                     expenseId = expenseId,                             // passes the expense ID to the edit screen
                     onExpenseSaved = { navController.popBackStack() }, // goes back after saving
                     onBack = { navController.popBackStack() }          // goes back when back button is pressed
+                )
+            }
+            composable(Screen.PaymentPlanSetup.route) { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable       // gets the group ID from the route
+                val fromUserId = backStackEntry.arguments?.getString("fromUserId") ?: return@composable // gets the debtor's user ID from the route
+                val toUserId = backStackEntry.arguments?.getString("toUserId") ?: return@composable     // gets the creditor's user ID from the route
+                val amount = backStackEntry.arguments?.getString("amount")?.toDoubleOrNull() ?: return@composable // gets the debt amount from the route
+                PaymentPlanSetupScreen(
+                    groupId = groupId.toLong(),  // passes the group ID
+                    fromUserId = fromUserId,      // passes the debtor's user ID
+                    toUserId = toUserId,          // passes the creditor's user ID
+                    totalAmount = amount,         // passes the total debt amount
+                    onBack = { navController.popBackStack() }, // goes back when back is pressed
+                    onPlanCreated = { planId, gId ->
+                        // navigates to the tracking screen and clears setup screen from the back stack
+                        navController.navigate(
+                            Screen.PaymentPlanTracking.route
+                                .replace("{planId}", planId.toString()) // inserts the plan ID into the route
+                                .replace("{groupId}", gId.toString())   // inserts the group ID into the route
+                        ) {
+                            popUpTo(Screen.GroupDetail.route) // clears back stack up to the group detail screen
+                        }
+                    }
+                )
+            }
+            composable(Screen.PaymentPlanTracking.route) { backStackEntry ->
+                val planId = backStackEntry.arguments?.getString("planId") ?: return@composable // gets the plan ID from the route
+                val groupId = backStackEntry.arguments?.getString("groupId")?.toLongOrNull() ?: return@composable // gets the group ID from the route
+                PaymentPlanTrackingScreen(
+                    planId = planId.toLong(),                  // passes the plan ID to the tracking screen
+                    groupId = groupId,                         // passes the group ID so the screen can load plans correctly
+                    onBack = { navController.popBackStack() }  // goes back when back is pressed
                 )
             }
         }

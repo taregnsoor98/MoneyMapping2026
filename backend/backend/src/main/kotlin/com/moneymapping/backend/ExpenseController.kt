@@ -22,7 +22,8 @@ import java.util.UUID                                     // used to generate un
 class ExpenseController(
     private val expenseRepository: ExpenseRepository,                     // injected automatically by Spring
     private val expenseItemRepository: ExpenseItemRepository,             // injected automatically by Spring
-    private val itemAssignmentRepository: ItemAssignmentRepository        // injected automatically by Spring
+    private val itemAssignmentRepository: ItemAssignmentRepository,       // injected automatically by Spring
+    private val expensePayerRepository: ExpensePayerRepository            // injected automatically by Spring
 ) {
 
     // Extracts and verifies the Bearer token — returns the userId or null if invalid
@@ -35,8 +36,22 @@ class ExpenseController(
         }
     }
 
-    @Transactional // ensures expense, items and assignments are all saved together atomically
-    @PostMapping // handles POST /expenses — saves a new expense, its items and their assignments
+    // Saves all payers for an expense — used in both create and update
+    private fun savePayers(expenseId: String, payers: List<ExpensePayerRequest>): List<ExpensePayer> {
+        return payers.map { payer ->
+            expensePayerRepository.save(
+                ExpensePayer(
+                    id = UUID.randomUUID().toString(), // generates a unique ID for this payer record
+                    expenseId = expenseId,             // links the payer to this expense
+                    payerName = payer.payerName,       // the name of the person who paid
+                    amountPaid = payer.amountPaid      // how much they paid
+                )
+            )
+        }
+    }
+
+    @Transactional // ensures expense, items, assignments and payers are all saved together atomically
+    @PostMapping // handles POST /expenses — saves a new expense, its items, assignments and payers
     fun createExpense(
         @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
         @RequestBody request: CreateExpenseRequest          // reads the request body as JSON
@@ -46,7 +61,7 @@ class ExpenseController(
 
         val expense = Expense(
             id = UUID.randomUUID().toString(),       // generates a unique ID for this expense
-            paidBy = userId,                         // the logged-in user is the payer
+            paidBy = null,                           // paidBy is now null — payers are stored in ExpensePayer
             groupId = request.groupId,               // null if solo expense
             amount = request.amount,                 // total amount
             currency = request.currency,             // e.g. "USD"
@@ -58,6 +73,8 @@ class ExpenseController(
         )
 
         val saved = expenseRepository.save(expense) // saves the expense to the database
+
+        val savedPayers = savePayers(saved.id, request.payers) // saves all payers for this expense
 
         // Saves each item and its assignments linked to this expense
         val savedItems = request.items.map { item ->
@@ -86,10 +103,10 @@ class ExpenseController(
             savedItem to savedAssignments // pairs the saved item with its saved assignments
         }
 
-        return ResponseEntity.ok(saved.toResponse(savedItems)) // returns the saved expense with items and assignments
+        return ResponseEntity.ok(saved.toResponse(savedItems, savedPayers)) // returns the saved expense with items, assignments and payers
     }
 
-    @GetMapping("/{id}") // handles GET /expenses/{id} — returns a single expense with its items and assignments
+    @GetMapping("/{id}") // handles GET /expenses/{id} — returns a single expense with its items, assignments and payers
     fun getExpense(
         @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
         @PathVariable id: String                            // reads the expense ID from the URL
@@ -97,16 +114,17 @@ class ExpenseController(
         val userId = getUserId(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
 
-        val expense = expenseRepository.findByIdAndPaidBy(id, userId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Expense not found or access denied")
+        val expense = expenseRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Expense not found")
 
-        val items = expenseItemRepository.findByExpenseId(id) // fetches all items for this expense
+        val payers = expensePayerRepository.findByExpenseId(id)          // fetches all payers for this expense
+        val items = expenseItemRepository.findByExpenseId(id)            // fetches all items for this expense
         val itemsWithAssignments = items.map { item ->
             val assignments = itemAssignmentRepository.findByExpenseItemId(item.id) // fetches assignments for each item
             item to assignments // pairs each item with its assignments
         }
 
-        return ResponseEntity.ok(expense.toResponse(itemsWithAssignments)) // returns expense with items and assignments
+        return ResponseEntity.ok(expense.toResponse(itemsWithAssignments, payers)) // returns expense with items, assignments and payers
     }
 
     @GetMapping // handles GET /expenses — returns all expenses for the logged-in user
@@ -118,49 +136,51 @@ class ExpenseController(
 
         val expenses = expenseRepository.findByPaidByOrderByDateDesc(userId) // fetches expenses newest first
         return ResponseEntity.ok(expenses.map { expense ->
-            val items = expenseItemRepository.findByExpenseId(expense.id) // fetches items for each expense
+            val payers = expensePayerRepository.findByExpenseId(expense.id)  // fetches payers for each expense
+            val items = expenseItemRepository.findByExpenseId(expense.id)    // fetches items for each expense
             val itemsWithAssignments = items.map { item ->
                 val assignments = itemAssignmentRepository.findByExpenseItemId(item.id) // fetches assignments for each item
                 item to assignments // pairs each item with its assignments
             }
-            expense.toResponse(itemsWithAssignments) // returns expense with items and assignments
+            expense.toResponse(itemsWithAssignments, payers) // returns expense with items, assignments and payers
         })
     }
+
     @GetMapping("/group/{groupId}") // handles GET /expenses/group/{groupId} — returns all expenses for a specific group
     fun getGroupExpenses(
         @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
-        @PathVariable groupId: Long                         // reads the group ID from the URL
+        @PathVariable groupId: Int                          // reads the group ID from the URL
     ): ResponseEntity<Any> {
         val userId = getUserId(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
 
-        val expenses = expenseRepository.findByGroupIdOrderByDateDesc(groupId) // fetches all expenses for this group
+        val expenses = expenseRepository.findByGroupIdOrderByDateDesc(groupId.toLong()) // fetches group expenses newest first
         return ResponseEntity.ok(expenses.map { expense ->
-            val items = expenseItemRepository.findByExpenseId(expense.id) // fetches items for each expense
+            val payers = expensePayerRepository.findByExpenseId(expense.id)  // fetches payers for each expense
+            val items = expenseItemRepository.findByExpenseId(expense.id)    // fetches items for each expense
             val itemsWithAssignments = items.map { item ->
                 val assignments = itemAssignmentRepository.findByExpenseItemId(item.id) // fetches assignments for each item
                 item to assignments // pairs each item with its assignments
             }
-            expense.toResponse(itemsWithAssignments) // converts to response object
+            expense.toResponse(itemsWithAssignments, payers) // returns expense with items, assignments and payers
         })
     }
 
-    @Transactional // ensures expense, items and assignments are all updated together atomically
-    @PutMapping("/{id}") // handles PUT /expenses/{id} — updates an existing expense, its items and assignments
+    @Transactional // ensures expense, items, assignments and payers are all updated together atomically
+    @PutMapping("/{id}") // handles PUT /expenses/{id} — updates an existing expense
     fun updateExpense(
         @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
         @PathVariable id: String,                           // reads the expense ID from the URL
-        @RequestBody request: CreateExpenseRequest          // reads the updated data as JSON
+        @RequestBody request: CreateExpenseRequest          // reads the updated expense data from the request body
     ): ResponseEntity<Any> {
         val userId = getUserId(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
 
-        val existing = expenseRepository.findByIdAndPaidBy(id, userId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Expense not found or access denied")
+        val existing = expenseRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Expense not found")
 
         val updated = existing.copy(
-            groupId = request.groupId,               // updates group ID
-            amount = request.amount,                 // updates amount
+            amount = request.amount,                 // updates total amount
             currency = request.currency,             // updates currency
             description = request.description,       // updates description
             category = request.category,             // updates category
@@ -171,27 +191,29 @@ class ExpenseController(
 
         val saved = expenseRepository.save(updated) // saves the updated expense
 
-        // Deletes all existing assignments for each item before deleting the items
-        val existingItems = expenseItemRepository.findByExpenseId(id) // fetches existing items
+        // Deletes old payers and saves the new ones
+        expensePayerRepository.deleteByExpenseId(id)
+        val savedPayers = savePayers(saved.id, request.payers)
+
+        // Deletes old items and their assignments before saving the new ones
+        val existingItems = expenseItemRepository.findByExpenseId(id) // fetches old items
         existingItems.forEach { item ->
-            itemAssignmentRepository.deleteByExpenseItemId(item.id) // deletes assignments for this item
+            itemAssignmentRepository.deleteByExpenseItemId(item.id) // deletes old assignments first
         }
+        expenseItemRepository.deleteByExpenseId(id) // deletes old items
 
-        expenseItemRepository.deleteByExpenseId(id) // deletes all old items after their assignments are gone
-
-        // Saves the updated items and their assignments
+        // Saves the new items and their assignments
         val savedItems = request.items.map { item ->
             val savedItem = expenseItemRepository.save(
                 ExpenseItem(
-                    expenseId = id,              // links the item to this expense
-                    name = item.name,            // updated item name
-                    unitPrice = item.unitPrice,  // updated unit price
-                    quantity = item.quantity,    // updated quantity
-                    totalPrice = item.totalPrice // updated total price
+                    expenseId = saved.id,        // links the item to this expense
+                    name = item.name,            // item name
+                    unitPrice = item.unitPrice,  // price per unit
+                    quantity = item.quantity,    // quantity
+                    totalPrice = item.totalPrice // total price for this item
                 )
             )
 
-            // Saves each assignment for this updated item
             val savedAssignments = item.assignments.map { assignment ->
                 itemAssignmentRepository.save(
                     ItemAssignment(
@@ -206,11 +228,11 @@ class ExpenseController(
             savedItem to savedAssignments // pairs the saved item with its saved assignments
         }
 
-        return ResponseEntity.ok(saved.toResponse(savedItems)) // returns the updated expense with items and assignments
+        return ResponseEntity.ok(saved.toResponse(savedItems, savedPayers)) // returns the updated expense with items, assignments and payers
     }
 
-    @Transactional // ensures the expense, its items and assignments are all deleted together atomically
-    @DeleteMapping("/{id}") // handles DELETE /expenses/{id} — deletes an expense, its items and assignments
+    @Transactional // ensures the expense, its items, assignments and payers are all deleted together atomically
+    @DeleteMapping("/{id}") // handles DELETE /expenses/{id} — deletes an expense, its items, assignments and payers
     fun deleteExpense(
         @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
         @PathVariable id: String                            // reads the expense ID from the URL
@@ -218,8 +240,10 @@ class ExpenseController(
         val userId = getUserId(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
 
-        val existing = expenseRepository.findByIdAndPaidBy(id, userId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Expense not found or access denied")
+        val existing = expenseRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Expense not found")
+
+        expensePayerRepository.deleteByExpenseId(id) // deletes all payers for this expense first
 
         // Deletes all assignments for each item before deleting the items themselves
         val existingItems = expenseItemRepository.findByExpenseId(id) // fetches all items for this expense
@@ -232,6 +256,12 @@ class ExpenseController(
         return ResponseEntity.ok("Expense deleted successfully") // confirms deletion
     }
 }
+
+// The request body for a single payer sent when creating or updating an expense
+data class ExpensePayerRequest(
+    val payerName: String,   // the name of the person who paid — username or guest name
+    val amountPaid: Double   // how much this person paid toward the expense
+)
 
 // The request body for a single assignment sent when creating or updating an expense
 data class ItemAssignmentRequest(
@@ -251,15 +281,23 @@ data class ExpenseItemRequest(
 
 // The request body sent when creating or updating an expense
 data class CreateExpenseRequest(
-    val groupId: Int? = null,                          // optional group ID
-    val amount: Double,                                // total amount
-    val currency: String,                              // e.g. "USD"
-    val description: String,                           // what the expense was for
-    val category: String,                              // e.g. "Food"
-    val date: String,                                  // date string in "yyyy-MM-dd" format
-    val isOneTimeSplit: Boolean = false,                // true if one-time split
-    val receiptImages: List<String> = emptyList(),     // optional receipt image URIs
-    val items: List<ExpenseItemRequest> = emptyList()  // list of items in this expense
+    val groupId: Int? = null,                                  // optional group ID
+    val amount: Double,                                        // total amount
+    val currency: String,                                      // e.g. "USD"
+    val description: String,                                   // what the expense was for
+    val category: String,                                      // e.g. "Food"
+    val date: String,                                          // date string in "yyyy-MM-dd" format
+    val isOneTimeSplit: Boolean = false,                        // true if one-time split
+    val receiptImages: List<String> = emptyList(),             // optional receipt image URIs
+    val items: List<ExpenseItemRequest> = emptyList(),         // list of items in this expense
+    val payers: List<ExpensePayerRequest> = emptyList()        // list of payers for this expense
+)
+
+// The response object for a single payer returned to the client
+data class ExpensePayerResponse(
+    val id: String,          // the payer record's unique ID
+    val payerName: String,   // the name of the person who paid
+    val amountPaid: Double   // how much they paid
 )
 
 // The response object for a single assignment returned to the client
@@ -281,10 +319,13 @@ data class ExpenseItemResponse(
 )
 
 // Converts an Expense entity to a response object safe to send to the client
-// Takes a list of pairs — each pair is an item and its list of assignments
-fun Expense.toResponse(items: List<Pair<ExpenseItem, List<ItemAssignment>>> = emptyList()) = ExpenseResponse(
+// Takes a list of item+assignment pairs, and a list of payers
+fun Expense.toResponse(
+    items: List<Pair<ExpenseItem, List<ItemAssignment>>> = emptyList(),
+    payers: List<ExpensePayer> = emptyList()
+) = ExpenseResponse(
     id = id,                                         // the expense ID
-    paidBy = paidBy,                                 // the user ID of the payer
+    paidBy = paidBy,                                 // kept for backwards compatibility — may be null
     groupId = groupId,                               // the group ID if applicable
     amount = amount,                                 // the total amount
     currency = currency,                             // the currency
@@ -293,6 +334,13 @@ fun Expense.toResponse(items: List<Pair<ExpenseItem, List<ItemAssignment>>> = em
     date = date.toString(),                          // converts LocalDate back to string for JSON
     isOneTimeSplit = isOneTimeSplit,                 // the split flag
     receiptImages = receiptImages,                   // the receipt image URIs
+    payers = payers.map { p ->                       // converts each payer entity to a response object
+        ExpensePayerResponse(
+            id = p.id,                               // payer record ID
+            payerName = p.payerName,                 // payer's name
+            amountPaid = p.amountPaid                // how much they paid
+        )
+    },
     items = items.map { (item, assignments) ->       // converts each item and its assignments to response objects
         ExpenseItemResponse(
             id = item.id,                            // item ID
@@ -314,15 +362,16 @@ fun Expense.toResponse(items: List<Pair<ExpenseItem, List<ItemAssignment>>> = em
 
 // The response object returned to the client after creating, updating or fetching an expense
 data class ExpenseResponse(
-    val id: String,                                    // the expense ID
-    val paidBy: String,                                // the user ID of the payer
-    val groupId: Int?,                                 // optional group ID
-    val amount: Double,                                // total amount
-    val currency: String,                              // e.g. "USD"
-    val description: String,                           // what the expense was for
-    val category: String,                              // e.g. "Food"
-    val date: String,                                  // date as string "yyyy-MM-dd"
-    val isOneTimeSplit: Boolean,                       // true if one-time split
-    val receiptImages: List<String>,                   // receipt image URIs
-    val items: List<ExpenseItemResponse> = emptyList() // list of items with their assignments
+    val id: String,                                            // the expense ID
+    val paidBy: String?,                                       // kept for backwards compatibility — may be null
+    val groupId: Int?,                                         // optional group ID
+    val amount: Double,                                        // total amount
+    val currency: String,                                      // e.g. "USD"
+    val description: String,                                   // what the expense was for
+    val category: String,                                      // e.g. "Food"
+    val date: String,                                          // date as string "yyyy-MM-dd"
+    val isOneTimeSplit: Boolean,                               // true if one-time split
+    val receiptImages: List<String>,                           // receipt image URIs
+    val payers: List<ExpensePayerResponse> = emptyList(),      // list of payers for this expense
+    val items: List<ExpenseItemResponse> = emptyList()         // list of items with their assignments
 )

@@ -6,6 +6,7 @@ package com.example.moneymapping.ui.expense
 // Any number of people can be assigned to any item regardless of quantity.
 // When launched from inside a group, shows only the group members as a dropdown.
 // When launched from the home screen, shows a search field and guest name field.
+// Also includes a "Who Paid?" section where the user can add one or more payers with amounts.
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.moneymapping.network.ExpensePayerRequest
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +58,7 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
     val searchState by viewModel.searchState.collectAsState()   // observes the current search state
     val isFromGroup by viewModel.isFromGroup.collectAsState()   // true if launched from inside a group
     val groupMembers by viewModel.groupMembers.collectAsState() // the group members if launched from a group
+    val payers by viewModel.payers.collectAsState()             // observes the current payers list
 
     // tracks which item's search field is currently active
     var activeSearchIndex by remember { mutableStateOf(-1) }
@@ -68,6 +71,15 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
 
     // tracks which item's group member dropdown is expanded
     var groupMemberDropdownIndex by remember { mutableStateOf(-1) }
+
+    // tracks the payer name input field for adding a new payer
+    var newPayerName by remember { mutableStateOf("") }
+
+    // tracks the payer amount input field for adding a new payer
+    var newPayerAmount by remember { mutableStateOf("") }
+
+    // tracks whether the payer name dropdown is expanded — used when launched from a group
+    var payerDropdownExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -428,10 +440,151 @@ fun StepFive(viewModel: ExpenseViewModel) { // receives the shared ViewModel
             }
         }
 
+        // ── Who Paid? section ──────────────────────────────────────────────────────
+        // lets the user add one or more payers with a name and amount each
+
+        Divider()
+
+        Text(
+            text = "Who Paid?",
+            style = MaterialTheme.typography.titleMedium // medium title for this section
+        )
+
+        Text(
+            text = "Add everyone who contributed to paying this expense.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant // lighter description color
+        )
+
+        // shows the list of already added payers
+        payers.forEachIndexed { index, payer ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // subtle shadow
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // shows payer name and amount
+                    Column {
+                        Text(
+                            text = payer.payerName,                                    // payer's name
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "Paid: ${String.format("%.2f", payer.amountPaid)}", // formatted amount
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // button to remove this payer
+                    OutlinedButton(onClick = { viewModel.removePayer(index) }) {
+                        Text("✕") // remove button
+                    }
+                }
+            }
+        }
+
+        // form to add a new payer
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // subtle shadow
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+
+                Text(
+                    text = "Add Payer",
+                    style = MaterialTheme.typography.titleSmall // small title for add payer form
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // if launched from a group, show a dropdown of group members as payer name
+                if (isFromGroup) {
+                    ExposedDropdownMenuBox(
+                        expanded = payerDropdownExpanded,
+                        onExpandedChange = { payerDropdownExpanded = !payerDropdownExpanded } // toggles dropdown
+                    ) {
+                        OutlinedTextField(
+                            value = newPayerName.ifEmpty { "Select a member" }, // shows selected name or placeholder
+                            onValueChange = {},
+                            readOnly = true,                                    // user can only select, not type
+                            label = { Text("Payer Name") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = payerDropdownExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()                                   // anchors the dropdown to this field
+                        )
+                        ExposedDropdownMenu(
+                            expanded = payerDropdownExpanded,
+                            onDismissRequest = { payerDropdownExpanded = false } // closes dropdown on dismiss
+                        ) {
+                            groupMembers.forEach { memberName ->
+                                DropdownMenuItem(
+                                    text = { Text(memberName) },                // shows the member name
+                                    onClick = {
+                                        newPayerName = memberName               // sets the selected member as payer name
+                                        payerDropdownExpanded = false           // closes dropdown
+                                    }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // if not from a group, show a free text field for payer name
+                    OutlinedTextField(
+                        value = newPayerName,
+                        onValueChange = { newPayerName = it },                  // updates payer name
+                        label = { Text("Payer Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // amount field — how much this payer paid
+                OutlinedTextField(
+                    value = newPayerAmount,
+                    onValueChange = { newPayerAmount = it },                    // updates payer amount
+                    label = { Text("Amount Paid") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), // shows number keyboard
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // button to add this payer to the list
+                Button(
+                    onClick = {
+                        val amount = newPayerAmount.toDoubleOrNull() ?: 0.0    // converts amount safely
+                        if (newPayerName.isNotBlank() && amount > 0.0) {       // only adds if name and amount are valid
+                            viewModel.addPayer(
+                                ExpensePayerRequest(
+                                    payerName = newPayerName,                   // the payer's name
+                                    amountPaid = amount                         // how much they paid
+                                )
+                            )
+                            newPayerName = ""                                   // clears the name field
+                            newPayerAmount = ""                                 // clears the amount field
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = newPayerName.isNotBlank() && newPayerAmount.isNotBlank() // only enabled if both fields are filled
+                ) {
+                    Text("Add Payer") // button label
+                }
+            }
+        }
+
         // next button to move to Step 6
         Button(
             onClick = { viewModel.nextStep() },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = payers.isNotEmpty() // only enabled if at least one payer has been added
         ) {
             Text("Next")
         }

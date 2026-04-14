@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope                    // coroutine scope t
 import com.example.moneymapping.data.TokenManager          // handles saving and reading tokens from DataStore
 import com.example.moneymapping.network.CreateExpenseRequest // the request model for creating an expense
 import com.example.moneymapping.network.ExpenseItemRequest  // the request model for a single item
+import com.example.moneymapping.network.ExpensePayerRequest // the request model for a single payer
 import com.example.moneymapping.network.GroupResponse       // the response model for a group
 import com.example.moneymapping.network.ItemAssignmentRequest // the request model for a single assignment
 import com.example.moneymapping.network.RetrofitClient      // our connection to the server
@@ -13,6 +14,7 @@ import com.example.moneymapping.network.UserSearchResult    // the result model 
 import kotlinx.coroutines.flow.MutableStateFlow             // holds a value and emits updates when it changes
 import kotlinx.coroutines.flow.StateFlow                    // read-only version exposed to the UI
 import kotlinx.coroutines.launch                            // launches a coroutine for background work
+
 
 class ExpenseViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -78,6 +80,29 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     // holds the group members if launched from inside a group — used in Step 5
     private val _groupMembers = MutableStateFlow<List<String>>(emptyList())
     val groupMembers: StateFlow<List<String>> = _groupMembers
+
+    // list of payers for this expense — each payer has a name and how much they paid
+    private val _payers = MutableStateFlow<List<ExpensePayerRequest>>(emptyList())
+    val payers: StateFlow<List<ExpensePayerRequest>> = _payers
+
+    // adds a payer to the list
+    fun addPayer(payer: ExpensePayerRequest) {
+        _payers.value = _payers.value + payer // appends the new payer to the list
+    }
+
+    // updates an existing payer in the list by its index
+    fun updatePayer(index: Int, payer: ExpensePayerRequest) {
+        val updated = _payers.value.toMutableList()
+        updated[index] = payer // replaces the payer at the given index
+        _payers.value = updated
+    }
+
+    // removes a payer from the list by its index
+    fun removePayer(index: Int) {
+        val updated = _payers.value.toMutableList()
+        updated.removeAt(index) // removes the payer at the given index
+        _payers.value = updated
+    }
 
     // sets up the wizard to be launched from inside a group
     fun launchFromGroup(groupId: Long, memberNames: List<String>) {
@@ -283,7 +308,8 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     date = _date.value,                                                    // the selected date
                     isOneTimeSplit = false,                                                 // always false — one-time splits handled through ONE_TIME groups
                     receiptImages = _receiptImages.value,                                  // the list of receipt image URIs
-                    items = itemRequests                                                    // the list of items
+                    items = itemRequests,                                                   // the list of items
+                    payers = _payers.value                                                 // the list of payers
                 )
 
                 RetrofitClient.create(getApplication()).createExpense("Bearer $accessToken", request) // sends the expense to the backend
@@ -312,6 +338,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         _launchGroupId.value = null              // clears the launch group ID
         _isFromGroup.value = false               // clears the from group flag
         _groupMembers.value = emptyList()        // clears the group members
+        _payers.value = emptyList()              // clears the payers list
     }
 }
 

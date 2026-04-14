@@ -4,14 +4,17 @@ import android.app.Application                              // needed to access 
 import androidx.lifecycle.AndroidViewModel                  // base class that gives us application context
 import androidx.lifecycle.viewModelScope                    // coroutine scope tied to this ViewModel's lifecycle
 import com.example.moneymapping.data.TokenManager          // used to read the stored access token
+import com.example.moneymapping.network.BalanceResponse    // response object for a single debt between two people
 import com.example.moneymapping.network.ExpenseResponse    // response object for an expense
 import com.example.moneymapping.network.GroupResponse      // response object for a group
+import com.example.moneymapping.network.PayDebtRequest     // request body for marking a debt as instantly paid
 import com.example.moneymapping.network.RetrofitClient     // used to make API calls
 import com.example.moneymapping.network.SpendingLimitResponse // response object for a spending limit
 import com.example.moneymapping.network.SetLimitRequest    // request body for setting a limit
 import kotlinx.coroutines.flow.MutableStateFlow            // holds state that can change over time
 import kotlinx.coroutines.flow.StateFlow                   // read-only version of MutableStateFlow
 import kotlinx.coroutines.launch                           // launches a coroutine
+import com.example.moneymapping.network.PaymentPlanResponse // response object for a payment plan
 
 // holds the different states the group detail screen can be in
 sealed class GroupDetailState {
@@ -44,7 +47,33 @@ class GroupDetailViewModel(application: Application) : AndroidViewModel(applicat
     private val _limits = MutableStateFlow<List<SpendingLimitResponse>>(emptyList())
     val limits: StateFlow<List<SpendingLimitResponse>> = _limits // exposed as read-only to the UI
 
-    // fetches the group details, expenses and limits by group ID
+    // holds the simplified list of who owes whom in this group
+    private val _balances = MutableStateFlow<List<BalanceResponse>>(emptyList())
+    val balances: StateFlow<List<BalanceResponse>> = _balances // exposed as read-only to the UI
+
+    // true while balances are being fetched
+    private val _balancesLoading = MutableStateFlow(false)
+    val balancesLoading: StateFlow<Boolean> = _balancesLoading // exposed as read-only to the UI
+
+    // holds the list of payment plans for this group
+    private val _paymentPlans = MutableStateFlow<List<PaymentPlanResponse>>(emptyList())
+    val paymentPlans: StateFlow<List<PaymentPlanResponse>> = _paymentPlans // exposed as read-only to the UI
+
+    // fetches all payment plans for this group
+    fun fetchPaymentPlans(groupId: Long, token: String? = null) {
+        viewModelScope.launch {
+            try {
+                val accessToken = token ?: tokenManager.getAccessToken() // uses provided token or gets stored one
+                ?: return@launch // no token — do nothing
+                val result = RetrofitClient.create(getApplication()).getGroupPaymentPlans("Bearer $accessToken", groupId) // calls GET /payment-plans/group/{groupId}
+                _paymentPlans.value = result // updates the payment plans list
+            } catch (e: Exception) {
+                _paymentPlans.value = emptyList() // clears plans on error
+            }
+        }
+    }
+
+    // fetches the group details, expenses, limits and balances by group ID
     fun loadGroup(groupId: Long) {
         viewModelScope.launch {
             _state.value = GroupDetailState.Loading // shows loading state
@@ -65,9 +94,16 @@ class GroupDetailViewModel(application: Application) : AndroidViewModel(applicat
                     }
                 _state.value = GroupDetailState.Success(group) // updates state with loaded group
 
-                // fetches expenses and limits for this group
+                // fetches expenses, limits and balances for this group
                 fetchExpenses(groupId, token)
                 fetchLimits(groupId, token)
+
+                // only fetches balances for FRIEND and ONE_TIME groups — FAMILY groups don't track debts
+                if (group.type != "FAMILY") {
+                    fetchBalances(groupId, token)
+                    fetchPaymentPlans(groupId, token) // fetches payment plans for this group
+                }
+
             } catch (e: Exception) {
                 _state.value = GroupDetailState.Error(e.message ?: "Failed to load group") // shows error
             }
@@ -101,6 +137,42 @@ class GroupDetailViewModel(application: Application) : AndroidViewModel(applicat
                 _limits.value = result // updates the limits list
             } catch (e: Exception) {
                 _limits.value = emptyList() // clears limits on error
+            }
+        }
+    }
+
+    // fetches the simplified list of who owes whom for this group
+    fun fetchBalances(groupId: Long, token: String? = null) {
+        viewModelScope.launch {
+            _balancesLoading.value = true // shows loading state for balances
+            try {
+                val accessToken = token ?: tokenManager.getAccessToken() // uses provided token or gets stored one
+                ?: return@launch // no token — do nothing
+                val result = RetrofitClient.create(getApplication()).getGroupBalances("Bearer $accessToken", groupId) // calls GET /groups/{id}/balances
+                _balances.value = result // updates the balances list
+            } catch (e: Exception) {
+                _balances.value = emptyList() // clears balances on error
+                android.util.Log.e("GroupDetail", "fetchBalances failed: ${e.message}") // logs the error so we can see what went wrong
+            } finally {
+                _balancesLoading.value = false // hides loading state
+            }
+        }
+    }
+
+    // marks a partial or full debt as settled — refreshes balances after
+    fun payDebtInstantly(groupId: Long, fromUserId: String, toUserId: String, amount: Double) {
+        viewModelScope.launch {
+            try {
+                val token = tokenManager.getAccessToken() // gets the stored access token
+                    ?: return@launch // no token — do nothing
+                RetrofitClient.create(getApplication()).payDebt( // calls POST /groups/{id}/balances/pay
+                    "Bearer $token",
+                    groupId,
+                    PayDebtRequest(fromUserId = fromUserId, toUserId = toUserId, amount = amount)
+                )
+                fetchBalances(groupId) // refreshes the balances after marking as paid
+            } catch (e: Exception) {
+                // silently fails — we can add error handling later
             }
         }
     }

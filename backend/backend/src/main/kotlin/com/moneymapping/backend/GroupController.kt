@@ -13,13 +13,19 @@ import org.springframework.web.bind.annotation.RequestBody    // reads the reque
 import org.springframework.web.bind.annotation.RequestHeader  // reads a specific request header
 import org.springframework.web.bind.annotation.RequestMapping // sets the base path for all endpoints
 import org.springframework.web.bind.annotation.RestController // marks this class as a REST controller
+import java.time.LocalDate                                // used to record the settlement date
 
 @RestController
 @RequestMapping("/groups") // all endpoints in this class start with /groups
 class GroupController(
-    private val groupRepository: GroupRepository,             // injected automatically by Spring
-    private val groupMemberRepository: GroupMemberRepository, // injected automatically by Spring
-    private val userRepository: UserRepository                // injected automatically by Spring — used to look up usernames
+    private val groupRepository: GroupRepository,                     // injected automatically by Spring
+    private val groupMemberRepository: GroupMemberRepository,         // injected automatically by Spring
+    private val userRepository: UserRepository,                       // injected automatically by Spring — used to look up usernames
+    private val expenseRepository: ExpenseRepository,                 // needed to fetch expenses for balance calculation
+    private val expenseItemRepository: ExpenseItemRepository,         // needed to fetch items per expense
+    private val itemAssignmentRepository: ItemAssignmentRepository,   // needed to fetch assignments per item
+    private val paidDebtRepository: PaidDebtRepository,              // needed to store and check settled debts
+    private val expensePayerRepository: ExpensePayerRepository        // needed to fetch payers per expense
 ) {
 
     // extracts and verifies the Bearer token — returns the userId or null if invalid
@@ -151,6 +157,136 @@ class GroupController(
 
         return ResponseEntity.ok(promoted) // returns the promoted member
     }
+
+    @GetMapping("/{id}/balances") // handles GET /groups/{id}/balances — returns who owes whom in this group
+    fun getGroupBalances(
+        @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
+        @PathVariable id: Long                              // reads the group ID from the URL
+    ): ResponseEntity<Any> {
+        val userId = getUserId(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
+
+        // checks that the requester is a member of this group
+        val isMember = groupMemberRepository.findByGroupIdAndUserId(id, userId).isNotEmpty()
+        if (!isMember) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not a member of this group")
+        }
+
+        // fetches all debts that have already been marked as settled for this group
+        val paidDebts = paidDebtRepository.findByGroupId(id) // gets all settled debts
+
+        // fetches all expenses that belong to this group
+        val expenses = expenseRepository.findByGroupIdOrderByDateDesc(id)
+
+        // builds a net balance map: personName -> net amount
+        // positive means this person is owed money, negative means they owe money
+        val balances = mutableMapOf<String, Double>()
+
+        for (expense in expenses) {
+            // fetches all payers for this expense from the ExpensePayer table
+            val payers = expensePayerRepository.findByExpenseId(expense.id)
+
+            // skips this expense entirely if it has no payers — old expenses without payers would cause incorrect balances
+            if (payers.isEmpty()) continue
+
+            // fetches all items that belong to this expense
+            val items = expenseItemRepository.findByExpenseId(expense.id)
+
+            // step 1 — every assigned person owes their share amount
+            // subtract from their balance (negative = owes money)
+            for (item in items) {
+                val assignments = itemAssignmentRepository.findByExpenseItemId(item.id) // fetches assignments for this item
+                for (assignment in assignments) {
+                    val debtor = assignment.personName   // the person who owes money
+                    val amount = assignment.shareAmount  // how much they owe
+                    balances[debtor] = (balances[debtor] ?: 0.0) - amount // reduces their balance by what they owe
+                }
+            }
+
+            // step 2 — every payer gets credited what they actually paid
+            // add to their balance (positive = is owed money)
+            for (payer in payers) {
+                val payerName = payer.payerName     // the name of this payer
+                val amountPaid = payer.amountPaid   // how much they paid
+                balances[payerName] = (balances[payerName] ?: 0.0) + amountPaid // increases their balance by what they paid
+            }
+        }
+
+        // step 3 — subtract all previously settled amounts from the balances map
+        // each paid debt stores the exact amount settled at that time — use it directly
+        for (paidDebt in paidDebts) {
+            balances[paidDebt.fromUserId] = (balances[paidDebt.fromUserId] ?: 0.0) + paidDebt.amount // reduces what the debtor owes
+            balances[paidDebt.toUserId] = (balances[paidDebt.toUserId] ?: 0.0) - paidDebt.amount     // reduces what the creditor is owed
+        }
+
+        // separates people into creditors (owed money) and debtors (owe money)
+        val creditors = balances.filter { it.value > 0.0 }.map { it.key to it.value }.toMutableList()
+        val debtors = balances.filter { it.value < 0.0 }.map { it.key to -it.value }.toMutableList() // flip sign so debtors are positive
+
+        val result = mutableListOf<BalanceResponse>() // will hold the final simplified list of debts
+
+        var i = 0 // index pointer for creditors list
+        var j = 0 // index pointer for debtors list
+
+        // greedy algorithm — matches the largest creditor with the largest debtor each iteration
+        while (i < creditors.size && j < debtors.size) {
+            val (creditorName, creditorAmount) = creditors[i] // person who is owed money
+            val (debtorName, debtorAmount) = debtors[j]       // person who owes money
+
+            val settled = minOf(creditorAmount, debtorAmount)          // the smaller of the two is what gets settled
+            val roundedSettled = Math.round(settled * 100) / 100.0     // rounds to 2 decimal places to avoid floating point noise
+
+            if (roundedSettled > 0.0) {
+                result.add(
+                    BalanceResponse(
+                        from = debtorName,      // the person paying
+                        to = creditorName,      // the person receiving
+                        amount = roundedSettled // the amount being transferred
+                    )
+                )
+            }
+
+            // reduce both balances by the settled amount
+            creditors[i] = creditorName to (creditorAmount - settled)
+            debtors[j] = debtorName to (debtorAmount - settled)
+
+            // advance the pointer if this person's balance is fully settled
+            if (creditors[i].second < 0.01) i++
+            if (debtors[j].second < 0.01) j++
+        }
+
+        return ResponseEntity.ok(result) // returns the simplified list of debts
+    }
+
+    @Transactional // ensures the paid debt record is saved atomically
+    @PostMapping("/{id}/balances/pay") // handles POST /groups/{id}/balances/pay — marks a full debt as instantly settled
+    fun payDebtInstantly(
+        @RequestHeader("Authorization") authHeader: String, // reads the Authorization header
+        @PathVariable id: Long,                             // reads the group ID from the URL
+        @RequestBody request: PayDebtRequest                // reads the request body as JSON
+    ): ResponseEntity<Any> {
+        val userId = getUserId(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token")
+
+        // checks that the requester is a member of this group
+        val isMember = groupMemberRepository.findByGroupIdAndUserId(id, userId).isNotEmpty()
+        if (!isMember) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not a member of this group")
+        }
+
+        // saves a record of this settled debt so it gets excluded from future balance calculations
+        paidDebtRepository.save(
+            PaidDebt(
+                groupId = id,                               // the group this debt belonged to
+                fromUserId = request.fromUserId,            // the person who was owing money
+                toUserId = request.toUserId,                // the person who was owed money
+                amount = request.amount,                    // the exact amount settled right now
+                settledDate = LocalDate.now().toString()    // today's date as "yyyy-MM-dd"
+            )
+        )
+
+        return ResponseEntity.ok("Debt from ${request.fromUserId} to ${request.toUserId} marked as paid") // confirms settlement
+    }
 }
 
 // the request body sent when creating a group
@@ -201,4 +337,18 @@ fun Group.toResponse(members: List<GroupMember>, getUsernameById: (String) -> St
             role = member.role                                                           // ADMIN or MEMBER
         )
     }
+)
+
+// represents a single simplified debt — one person owes another a specific amount
+data class BalanceResponse(
+    val from: String,   // the person who owes money
+    val to: String,     // the person who receives money
+    val amount: Double  // how much is owed
+)
+
+// the request body sent when marking a full debt as instantly paid
+data class PayDebtRequest(
+    val fromUserId: String, // the person who was owing money
+    val toUserId: String,   // the person who was owed money
+    val amount: Double      // the exact amount being settled right now
 )

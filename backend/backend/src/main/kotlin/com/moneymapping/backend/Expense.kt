@@ -17,7 +17,7 @@ data class Expense(
     @Id
     val id: String,                          // unique UUID for this expense
 
-    val paidBy: String,                      // user ID of whoever paid
+    val paidBy: String? = null,              // kept for backwards compatibility — null if using new multi-payer system
 
     val groupId: Int? = null,                // optional — null if solo expense
 
