@@ -62,6 +62,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")         // for image picker from gallery
     implementation("io.coil-kt:coil-compose:2.6.0")                    // for displaying picked images
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")             // WorkManager with coroutine support for background tasks
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

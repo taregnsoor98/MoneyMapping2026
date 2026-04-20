@@ -17,11 +17,25 @@ import com.example.moneymapping.ui.auth.LoginScreen // the login UI screen
 import com.example.moneymapping.ui.auth.RegisterScreen // the register UI screen
 import com.example.moneymapping.ui.navigation.MainScreen // imports the main screen with bottom nav
 import com.example.moneymapping.ui.theme.MoneyMappingTheme // the app theme
+import com.example.moneymapping.worker.scheduleInstallmentReminders  // schedules the daily installment reminder worker
 
 class MainActivity : ComponentActivity() {
+
+    // launcher that handles the result of the POST_NOTIFICATIONS permission request
+    private val requestNotificationPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission() // standard contract for requesting a single permission
+    ) { _ -> } // we don't need to handle the result — if denied, notifications simply won't show
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        scheduleInstallmentReminders(this)                                   // schedules the daily check for upcoming installments
+
+        // asks the user for notification permission on Android 13+ when the app first opens
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) // shows the system permission dialog
+        }
+
         setContent {
             MoneyMappingTheme {
                 AppNavigation() // starts the app navigation
@@ -38,7 +52,7 @@ fun AppNavigation() {
 
     when {
         authState is AuthState.LoginSuccess -> {
-            MainScreen() // loads the main screen with bottom nav after successful login
+            MainScreen(authViewModel = authViewModel) // loads the main screen with bottom nav after successful login  and passes authViewModel so mainscreen can call logout
         }
         showRegister -> {
             RegisterScreen(

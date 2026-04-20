@@ -61,7 +61,7 @@ class ExpenseController(
 
         val expense = Expense(
             id = UUID.randomUUID().toString(),       // generates a unique ID for this expense
-            paidBy = null,                           // paidBy is now null — payers are stored in ExpensePayer
+            paidBy = userId,                         // stores the userId so GET /expenses can fetch by owner
             groupId = request.groupId,               // null if solo expense
             amount = request.amount,                 // total amount
             currency = request.currency,             // e.g. "USD"

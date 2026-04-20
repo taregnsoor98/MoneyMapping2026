@@ -18,7 +18,6 @@ data class NavItem(val label: String, val route: String, val icon: Int)
 // List of all bottom nav items
 val bottomNavItems = listOf(
     NavItem("Home", Screen.Home.route, R.drawable.ic_home),           // Home tab
-    NavItem("History", Screen.History.route, R.drawable.ic_history),  // History tab
     NavItem("Groups", Screen.Groups.route, R.drawable.ic_groups),     // Groups tab
     NavItem("Profile", Screen.Profile.route, R.drawable.ic_profile)   // Profile tab
 )

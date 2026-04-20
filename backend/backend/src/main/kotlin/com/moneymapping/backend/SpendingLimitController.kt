@@ -43,9 +43,9 @@ class SpendingLimitController(
         val existing = spendingLimitRepository.findByUserIdAndGroupIdIsNull(userId)
 
         val limit = if (existing != null) {
-            existing.copy(amount = request.amount, period = request.period) // updates existing limit
+            existing.copy(amount = request.amount, period = request.period, currency = request.currency) // updates existing limit
         } else {
-            SpendingLimit(userId = userId, amount = request.amount, period = request.period) // creates new limit
+            SpendingLimit(userId = userId, amount = request.amount, period = request.period, currency = request.currency) // creates new limit
         }
 
         return ResponseEntity.ok(spendingLimitRepository.save(limit)) // saves and returns the limit
@@ -143,7 +143,8 @@ class SpendingLimitController(
 
 // the request body sent when setting a limit
 data class SetLimitRequest(
-    val amount: Double,            // the limit amount
-    val period: String,            // the period — "DAILY", "WEEKLY", or "MONTHLY"
+    val amount: Double,              // the limit amount
+    val period: String,              // the period — "DAILY", "WEEKLY", or "MONTHLY"
+    val currency: String = "",       // the currency the limit is set in e.g. "JOD"
     val targetUserId: String? = null // the user to set the limit for — null for group-wide limit
 )

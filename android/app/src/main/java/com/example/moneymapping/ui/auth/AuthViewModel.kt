@@ -30,6 +30,14 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) { 
         }
     }
 
+    // clears all stored tokens then resets auth state — AppNavigation will switch to the login screen
+    fun logout() {
+        viewModelScope.launch {                                        // runs in background because clearTokens is a suspend function
+            tokenManager.clearTokens()                                // wipes access token, refresh token, and user ID from DataStore
+            _authState.value = AuthState.Idle                         // triggers AppNavigation to show LoginScreen
+        }
+    }
+
     fun login(emailOrUsername: String, password: String) { // called when user taps login
         viewModelScope.launch { // runs in background so UI doesn't freeze
             _authState.value = AuthState.Loading // show loading indicator while waiting for server

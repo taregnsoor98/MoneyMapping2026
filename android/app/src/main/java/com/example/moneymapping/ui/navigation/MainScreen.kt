@@ -12,7 +12,6 @@ import com.example.moneymapping.ui.expense.AddExpenseScreen        // imports th
 import com.example.moneymapping.ui.screens.EditExpenseScreen       // imports the edit expense screen
 import com.example.moneymapping.ui.screens.ExpenseDetailScreen     // imports the expense detail screen
 import com.example.moneymapping.ui.screens.GroupsScreen
-import com.example.moneymapping.ui.screens.HistoryScreen
 import com.example.moneymapping.ui.screens.HomeScreen
 import com.example.moneymapping.ui.screens.ProfileScreen
 import com.example.moneymapping.ui.screens.CreateGroupScreen       // imports the create group screen
@@ -20,9 +19,12 @@ import com.example.moneymapping.ui.screens.GroupDetailScreen       // imports th
 import com.example.moneymapping.ui.screens.ManageLimitsScreen      // imports the manage limits screen
 import com.example.moneymapping.ui.screens.PaymentPlanSetupScreen  // imports the payment plan setup screen
 import com.example.moneymapping.ui.screens.PaymentPlanTrackingScreen // imports the payment plan tracking screen
+import com.example.moneymapping.ui.auth.AuthViewModel            // needed to call logout from the profile screen
+import com.example.moneymapping.ui.screens.AllExpensesScreen          // imports the all expenses screen
+import com.example.moneymapping.ui.screens.RecurringExpensesScreen   // imports the recurring expenses screen
 
 @Composable
-fun MainScreen() {
+fun MainScreen(authViewModel: AuthViewModel) {
 
     // Creates and remembers the nav controller for the whole app
     val navController = rememberNavController()
@@ -44,7 +46,6 @@ fun MainScreen() {
             composable(Screen.Home.route) {
                 HomeScreen(navController = navController) // passes navController so Home can navigate
             }
-            composable(Screen.History.route) { HistoryScreen() }  // loads History screen
             composable(Screen.Groups.route) {
                 GroupsScreen(
                     onNavigateToCreateGroup = { navController.navigate(Screen.CreateGroup.route) }, // navigates to create group screen
@@ -53,7 +54,13 @@ fun MainScreen() {
                     }
                 )
             }
-            composable(Screen.Profile.route) { ProfileScreen() }  // loads Profile screen
+
+            composable(Screen.Profile.route) {
+                ProfileScreen(
+                    onLogout = { authViewModel.logout() }                    // resets auth state — AppNavigation switches to login
+                )
+            }
+
             composable(Screen.AddExpense.route) {
                 AddExpenseScreen(
                     onExpenseAdded = { navController.popBackStack() }, // goes back after adding
@@ -170,6 +177,14 @@ fun MainScreen() {
                     groupId = groupId,                         // passes the group ID so the screen can load plans correctly
                     onBack = { navController.popBackStack() }  // goes back when back is pressed
                 )
+            }
+
+            composable(Screen.AllExpenses.route) {
+                AllExpensesScreen(navController = navController)      // passes navController so the screen can navigate back and to expense detail
+            }
+
+            composable(Screen.RecurringExpenses.route) {
+                RecurringExpensesScreen(navController = navController) // passes navController so the screen can navigate back
             }
         }
     }

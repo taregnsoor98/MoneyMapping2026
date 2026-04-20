@@ -20,5 +20,8 @@ data class SpendingLimit(
 
     val amount: Double,         // the limit amount e.g. 500.0
 
-    val period: String          // the period — "DAILY", "WEEKLY", or "MONTHLY"
+    val period: String,          // the period — "DAILY", "WEEKLY", or "MONTHLY"
+
+    val currency: String = ""   // the currency the limit was set in e.g. "JOD"
+
 )

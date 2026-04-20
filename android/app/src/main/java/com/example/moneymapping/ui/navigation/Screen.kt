@@ -5,7 +5,6 @@ package com.example.moneymapping.ui.navigation
 sealed class Screen(val route: String) {
 
     object Home : Screen("home")                                    // Main dashboard screen
-    object History : Screen("history")                              // Expense history screen
     object Groups : Screen("groups")                                // Groups management screen
     object Profile : Screen("profile")                              // User profile & settings screen
     object AddExpense : Screen("add_expense")                       // route for the add expense screen
@@ -17,4 +16,7 @@ sealed class Screen(val route: String) {
     object ManageLimits : Screen("manage_limits/{groupId}")         // route for the manage limits screen
     object PaymentPlanSetup : Screen("payment_plan_setup/{groupId}/{fromUserId}/{toUserId}/{amount}") // route for the payment plan setup screen — passes groupId, fromUserId, toUserId, and amount
     object PaymentPlanTracking : Screen("payment_plan_tracking/{planId}/{groupId}") // tracking screen now also receives groupId so it can load plans correctly
+    object AllExpenses : Screen("all_expenses")                       // route for the full searchable expense list screen
+    object RecurringExpenses : Screen("recurring_expenses")           // route for the recurring expenses management screen
+
 }

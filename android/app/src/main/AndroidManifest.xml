@@ -9,6 +9,9 @@
     <!-- Allows the app to open the camera for scanning receipts -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Allows the app to open the camera for scanning receipts -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- Declares that the app uses the camera but does not require it as mandatory hardware -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
