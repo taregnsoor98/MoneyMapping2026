@@ -28,7 +28,7 @@ import com.fasterxml.jackson.module.kotlin.readValue            // reads JSON in
 // Starts the full Spring Boot app on a random available port.
 // We then make real HTTP calls to that port using Java's built-in HttpClient.
 // This is exactly what makes these integration tests — the whole stack runs.
-// this is a test
+//
 // WHY Java's built-in HttpClient?
 // MockMvc and TestRestTemplate are not available in Spring Boot 4.0.5.
 // Java 11+ includes a built-in HttpClient that needs zero extra dependencies.
