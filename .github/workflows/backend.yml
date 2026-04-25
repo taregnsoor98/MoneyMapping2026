@@ -25,12 +25,12 @@ jobs:
           distribution: 'temurin'
 
       - name: Grant execute permission for gradlew
-        run: chmod +x backend/gradlew
+        run: chmod +x backend/backend/gradlew
 
       - name: Build with Gradle
-        working-directory: backend
+        working-directory: backend/backend
         run: ./gradlew build -x test
 
       - name: Run tests
-        working-directory: backend
+        working-directory: backend/backend
         run: ./gradlew test
